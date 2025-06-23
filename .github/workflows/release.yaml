@@ -15,7 +15,7 @@ jobs:
   create-release:
     permissions:
       contents: write
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     outputs:
       release_id: ${{ steps.create-release.outputs.id }}
       release_upload_url: ${{ steps.create-release.outputs.upload_url }}
@@ -41,7 +41,7 @@ jobs:
         uses: ncipollo/release-action@2c591bcc8ecdcd2db72b97d6147f871fcd833ba5 # ratchet:ncipollo/release-action@v1
         with:
           draft: true
-          name: ${{ steps.get_version.outputs.version }}
+          name: "avante-libs ${{ steps.get_version.outputs.version }}"
           tag: ${{ steps.get_version.outputs.version }}
           body: "${{ steps.tag.outputs.message }}"
 
@@ -52,7 +52,7 @@ jobs:
       matrix:
         feature: [lua51, luajit]
         config:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             os_name: linux
             arch: aarch64
             rust_target: aarch64-unknown-linux-gnu
@@ -85,21 +85,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
-
-      # Step 1: Set up QEMU for multi-architecture support
-      - name: Set up QEMU
-        if: ${{ matrix.config.docker_platform == 'linux/aarch64' }}
-        uses: docker/setup-qemu-action@v2
-        with:
-          platforms: all
-
       - uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab # ratchet:Swatinem/rust-cache@v2
         if: ${{ matrix.config.container == null }}
       - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a # ratchet:dtolnay/rust-toolchain@master
         if: ${{ matrix.config.container == null }}
         with:
           targets: ${{ matrix.config.rust_target }}
-          toolchain: 1.80.0
+          toolchain: "1.85.0"
       - name: Build all crates
         if: ${{ matrix.config.container == null }}
         run: |
@@ -115,7 +107,7 @@ jobs:
             -w /workspace \
             --platform ${{ matrix.config.docker_platform }} \
             ${{ matrix.config.container }} \
-            bash -c "yum install -y openssl-devel && curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . /root/.cargo/env && cargo build --release --features ${{ matrix.feature }}"
+            bash -c "yum install -y perl-IPC-Cmd openssl-devel && curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . /root/.cargo/env && cargo build --release --features ${{ matrix.feature }}"
 
       - name: Handle binaries
         if: ${{ matrix.config.os_name != 'windows' }}
@@ -130,6 +122,7 @@ jobs:
           cp target/release/libavante_templates.$EXT results/avante_templates.$EXT
           cp target/release/libavante_tokenizers.$EXT results/avante_tokenizers.$EXT
           cp target/release/libavante_repo_map.$EXT results/avante_repo_map.$EXT
+          cp target/release/libavante_html2md.$EXT results/avante_html2md.$EXT
 
           cd results
           tar zcvf avante_lib-${{ matrix.config.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.tar.gz *.${EXT}
@@ -143,6 +136,7 @@ jobs:
           Copy-Item -Path "target\release\avante_templates.dll" -Destination "results\avante_templates.dll"
           Copy-Item -Path "target\release\avante_tokenizers.dll" -Destination "results\avante_tokenizers.dll"
           Copy-Item -Path "target\release\avante_repo_map.dll" -Destination "results\avante_repo_map.dll"
+          Copy-Item -Path "target\release\avante_html2md.dll" -Destination "results\avante_html2md.dll"
 
           Set-Location -Path results
 
@@ -171,7 +165,7 @@ jobs:
   publish-release:
     permissions:
       contents: write
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     needs: [create-release, releases-matrix]
 
     steps:

@@ -1,4 +1,5 @@
 local P = require("avante.providers")
+local Utils = require("avante.utils")
 local Gemini = require("avante.providers.gemini")
 
 ---@class AvanteProviderFunctor
@@ -11,18 +12,20 @@ M.role_map = {
   assistant = "model",
 }
 
+M.is_disable_stream = Gemini.is_disable_stream
 M.parse_messages = Gemini.parse_messages
 M.parse_response = Gemini.parse_response
+M.transform_to_function_declaration = Gemini.transform_to_function_declaration
 
 local function execute_command(command)
-  local handle = io.popen(command)
+  local handle = io.popen(command .. " 2>/dev/null")
   if not handle then error("Failed to execute command: " .. command) end
   local result = handle:read("*a")
   handle:close()
   return result:match("^%s*(.-)%s*$")
 end
 
-M.parse_api_key = function()
+function M.parse_api_key()
   if not M.api_key_name:match("^cmd:") then
     error("Invalid api_key_name: Expected 'cmd:<command>' format, got '" .. M.api_key_name .. "'")
   end
@@ -31,34 +34,30 @@ M.parse_api_key = function()
   return direct_output
 end
 
-M.parse_curl_args = function(provider, code_opts)
-  local base, body_opts = P.parse_config(provider)
-  local location = vim.fn.getenv("LOCATION") or "default-location"
-  local project_id = vim.fn.getenv("PROJECT_ID") or "default-project-id"
-  local model_id = base.model or "default-model-id"
-  local url = base.endpoint:gsub("LOCATION", location):gsub("PROJECT_ID", project_id)
+function M:parse_curl_args(prompt_opts)
+  local provider_conf, request_body = P.parse_config(self)
 
+  local location = vim.fn.getenv("LOCATION")
+  local project_id = vim.fn.getenv("PROJECT_ID")
+  local model_id = provider_conf.model or "default-model-id"
+
+  if location == nil or location == vim.NIL then location = "default-location" end
+  if project_id == nil or project_id == vim.NIL then project_id = "default-project-id" end
+
+  local url = provider_conf.endpoint:gsub("LOCATION", location):gsub("PROJECT_ID", project_id)
   url = string.format("%s/%s:streamGenerateContent?alt=sse", url, model_id)
 
-  body_opts = vim.tbl_deep_extend("force", body_opts, {
-    generationConfig = {
-      temperature = body_opts.temperature,
-      maxOutputTokens = body_opts.max_tokens,
-    },
-  })
-  body_opts.temperature = nil
-  body_opts.max_tokens = nil
   local bearer_token = M.parse_api_key()
 
   return {
     url = url,
-    headers = {
+    headers = Utils.tbl_override({
       ["Authorization"] = "Bearer " .. bearer_token,
       ["Content-Type"] = "application/json; charset=utf-8",
-    },
-    proxy = base.proxy,
-    insecure = base.allow_insecure,
-    body = vim.tbl_deep_extend("force", {}, M.parse_messages(code_opts), body_opts),
+    }, self.extra_headers),
+    proxy = provider_conf.proxy,
+    insecure = provider_conf.allow_insecure,
+    body = Gemini.prepare_request_body(self, prompt_opts, provider_conf, request_body),
   }
 end
 

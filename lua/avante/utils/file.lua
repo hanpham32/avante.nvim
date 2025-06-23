@@ -39,36 +39,34 @@ function M.exists(filepath)
   return stat ~= nil
 end
 
-function M.is_in_cwd(filepath)
-  local cwd = vim.fn.getcwd()
-  -- Make both paths absolute for comparison
+function M.is_in_project(filepath)
+  local Root = require("avante.utils.root")
+  local project_root = Root.get()
   local abs_filepath = vim.fn.fnamemodify(filepath, ":p")
-  local abs_cwd = vim.fn.fnamemodify(cwd, ":p")
-  -- Check if filepath starts with cwd
-  return abs_filepath:sub(1, #abs_cwd) == abs_cwd
+  return abs_filepath:sub(1, #project_root) == project_root
 end
 
 function M.get_file_icon(filepath)
   local filetype = Filetype.detect(filepath, {}) or "unknown"
   ---@type string
-  local icon
+  local icon, hl
   ---@diagnostic disable-next-line: undefined-field
   if _G.MiniIcons ~= nil then
     ---@diagnostic disable-next-line: undefined-global
-    icon, _, _ = MiniIcons.get("filetype", filetype) -- luacheck: ignore
+    icon, hl, _ = MiniIcons.get("filetype", filetype) -- luacheck: ignore
   else
     local ok, devicons = pcall(require, "nvim-web-devicons")
     if ok then
-      icon = devicons.get_icon(filepath, filetype, { default = false })
+      icon, hl = devicons.get_icon(filepath, filetype, { default = false })
       if not icon then
-        icon = devicons.get_icon(filepath, nil, { default = true })
+        icon, hl = devicons.get_icon(filepath, nil, { default = true })
         icon = icon or " "
       end
     else
       icon = ""
     end
   end
-  return icon
+  return icon, hl
 end
 
 return M

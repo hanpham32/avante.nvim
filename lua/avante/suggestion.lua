@@ -3,6 +3,7 @@ local Llm = require("avante.llm")
 local Highlights = require("avante.highlights")
 local Config = require("avante.config")
 local Providers = require("avante.providers")
+local HistoryMessage = require("avante.history_message")
 local api = vim.api
 local fn = vim.fn
 
@@ -23,7 +24,7 @@ local SUGGESTION_NS = api.nvim_create_namespace("avante_suggestion")
 ---@field augroup integer
 ---@field ignore_patterns table
 ---@field negate_patterns table
----@field _timer? table
+---@field _timer? integer
 ---@field _contexts table
 ---@field is_on_throttle boolean
 local Suggestion = {}
@@ -72,10 +73,10 @@ function Suggestion:suggest()
 
   local full_response = ""
 
-  local provider = Providers[Config.auto_suggestions_provider]
+  local provider = Providers[Config.auto_suggestions_provider or Config.provider]
 
   ---@type AvanteLLMMessage[]
-  local history_messages = {
+  local llm_messages = {
     {
       role = "user",
       content = [[
@@ -84,8 +85,8 @@ function Suggestion:suggest()
 L1: def fib
 L2:
 L3: if __name__ == "__main__":
-L4:    # just pass
-L5:    pass
+L4:     # just pass
+L5:     pass
 </code>
       ]],
     },
@@ -95,11 +96,12 @@ L5:    pass
     },
     {
       role = "user",
-      content = '<question>{ "indentSize": 4, "position": { "row": 1, "col": 2 } }</question>',
+      content = '{"insertSpaces":true,"tabSize":4,"indentSize":4,"position":{"row":1,"col":7}}',
     },
     {
       role = "assistant",
       content = [[
+<suggestions>
 [
   [
     {
@@ -126,20 +128,28 @@ L5:    pass
     },
   ]
 ]
-      ]],
+</suggestions>
+          ]],
     },
   }
+
+  local history_messages = vim.iter(llm_messages):map(function(msg) return HistoryMessage:new(msg) end):totable()
+
+  local diagnostics = Utils.lsp.get_diagnostics(bufnr)
 
   Llm.stream({
     provider = provider,
     ask = true,
+    diagnostics = vim.json.encode(diagnostics),
     selected_files = { { content = code_content, file_type = filetype, path = "" } },
     code_lang = filetype,
     history_messages = history_messages,
     instructions = vim.json.encode(doc),
     mode = "suggesting",
+    on_start = function(_) end,
     on_chunk = function(chunk) full_response = full_response .. chunk end,
-    on_complete = function(err)
+    on_stop = function(stop_opts)
+      local err = stop_opts.error
       if err then
         Utils.error("Error while suggesting: " .. vim.inspect(err), { once = true, title = "Avante" })
         return
@@ -149,10 +159,14 @@ L5:    pass
         local cursor_row, cursor_col = Utils.get_cursor_pos()
         if cursor_row ~= doc.position.row or cursor_col ~= doc.position.col then return end
         -- Clean up markdown code blocks
+        full_response = Utils.trim_think_content(full_response)
+        full_response = full_response:gsub("<suggestions>\n(.-)\n</suggestions>", "%1")
         full_response = full_response:gsub("^```%w*\n(.-)\n```$", "%1")
         full_response = full_response:gsub("(.-)\n```\n?$", "%1")
         -- Remove everything before the first '[' to ensure we get just the JSON array
         full_response = full_response:gsub("^.-(%[.*)", "%1")
+        -- Remove everything after the last ']' to ensure we get just the JSON array
+        full_response = full_response:gsub("(.*%]).-$", "%1")
         local ok, suggestions_list = pcall(vim.json.decode, full_response)
         if not ok then
           Utils.error("Error while decoding suggestions: " .. full_response, { once = true, title = "Avante" })
@@ -161,6 +175,9 @@ L5:    pass
         if not suggestions_list then
           Utils.info("No suggestions found", { once = true, title = "Avante" })
           return
+        end
+        if #suggestions_list ~= 0 and not vim.islist(suggestions_list[1]) then
+          suggestions_list = { suggestions_list }
         end
         local current_lines = Utils.get_buf_lines(0, -1, bufnr)
         suggestions_list = vim
@@ -180,6 +197,7 @@ L5:    pass
                     break
                   end
                 end
+                if #new_content_lines == 0 then return nil end
                 return {
                   id = s.start_row,
                   original_start_row = s.start_row,
@@ -188,6 +206,7 @@ L5:    pass
                   content = Utils.trim_all_line_numbers(table.concat(new_content_lines, "\n")),
                 }
               end)
+              :filter(function(s) return s ~= nil end)
               :totable()
             --- sort the suggestions by start_row
             table.sort(new_suggestions, function(a, b) return a.start_row < b.start_row end)
@@ -203,6 +222,8 @@ L5:    pass
 end
 
 function Suggestion:show()
+  Utils.debug("showing suggestions, mode:", fn.mode())
+
   self:hide()
 
   if not fn.mode():match("^[iR]") then return end
@@ -227,15 +248,25 @@ function Suggestion:show()
     local current_lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
 
     local virt_text_win_col = 0
+    local cursor_row, _ = Utils.get_cursor_pos()
 
-    if
-      start_row == end_row
-      and current_lines[start_row]
-      and #lines > 0
-      and vim.startswith(lines[1], current_lines[start_row])
-    then
-      virt_text_win_col = #current_lines[start_row]
-      lines[1] = string.sub(lines[1], #current_lines[start_row] + 1)
+    if start_row == end_row and start_row == cursor_row and current_lines[start_row] and #lines > 0 then
+      if vim.startswith(lines[1], current_lines[start_row]) then
+        virt_text_win_col = #current_lines[start_row]
+        lines[1] = string.sub(lines[1], #current_lines[start_row] + 1)
+      else
+        local patch = vim.diff(
+          current_lines[start_row],
+          lines[1],
+          ---@diagnostic disable-next-line: missing-fields
+          { algorithm = "histogram", result_type = "indices", ctxlen = vim.o.scrolloff }
+        )
+        Utils.debug("patch", patch)
+        if patch and #patch > 0 then
+          virt_text_win_col = patch[1][3]
+          lines[1] = string.sub(lines[1], patch[1][3] + 1)
+        end
+      end
     end
 
     local virt_lines = {}
@@ -272,9 +303,16 @@ function Suggestion:show()
     end
 
     for i = start_row, end_row do
-      if i == start_row and virt_text_win_col > 0 then goto continue end
+      if i == start_row and start_row == cursor_row and virt_text_win_col > 0 then goto continue end
       Utils.debug("add highlight", i - 1)
-      api.nvim_buf_add_highlight(bufnr, SUGGESTION_NS, Highlights.TO_BE_DELETED, i - 1, 0, -1)
+      local old_line = current_lines[i]
+      api.nvim_buf_set_extmark(
+        bufnr,
+        SUGGESTION_NS,
+        i - 1,
+        0,
+        { hl_group = Highlights.TO_BE_DELETED, end_row = i - 1, end_col = #old_line }
+      )
       ::continue::
     end
   end
@@ -389,7 +427,7 @@ function Suggestion:accept()
       self:set_internal_move(true)
       api.nvim_win_set_cursor(0, { first_line_row, col })
       vim.cmd("normal! zz")
-      vim.cmd("startinsert")
+      vim.cmd("noautocmd startinsert")
       self:set_internal_move(false)
       return
     end

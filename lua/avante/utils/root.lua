@@ -1,5 +1,6 @@
 -- COPIED and MODIFIED from https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/util/root.lua
 local Utils = require("avante.utils")
+local Config = require("avante.config")
 
 ---@class avante.utils.root
 ---@overload fun(): string
@@ -27,9 +28,10 @@ function M.detectors.lsp(buf)
   local bufpath = M.bufpath(buf)
   if not bufpath then return {} end
   local roots = {} ---@type string[]
-  for _, client in pairs(Utils.lsp.get_clients({ bufnr = buf })) do
+  local lsp_clients = Utils.lsp.get_clients({ bufnr = buf })
+  for _, client in ipairs(lsp_clients) do
     local workspace = client.config.workspace_folders
-    for _, ws in pairs(workspace or {}) do
+    for _, ws in ipairs(workspace or {}) do
       roots[#roots + 1] = vim.uri_to_fname(ws.uri)
     end
     if client.root_dir then roots[#roots + 1] = client.root_dir end
@@ -42,10 +44,11 @@ end
 
 ---@param patterns string[]|string
 function M.detectors.pattern(buf, patterns)
-  patterns = type(patterns) == "string" and { patterns } or patterns
+  local patterns_ = type(patterns) == "string" and { patterns } or patterns
+  ---@cast patterns_ string[]
   local path = M.bufpath(buf) or vim.uv.cwd()
   local pattern = vim.fs.find(function(name)
-    for _, p in ipairs(patterns) do
+    for _, p in ipairs(patterns_) do
       if name == p then return true end
       if p:sub(1, 1) == "*" and name:find(vim.pesc(p:sub(2)) .. "$") then return true end
     end
@@ -54,7 +57,29 @@ function M.detectors.pattern(buf, patterns)
   return pattern and { vim.fs.dirname(pattern) } or {}
 end
 
-function M.bufpath(buf) return M.realpath(vim.api.nvim_buf_get_name(assert(buf))) end
+function M.bufpath(buf)
+  if buf == nil or type(buf) ~= "number" then
+    -- TODO: Consider logging this unexpected buffer type or nil value if assert was bypassed.
+    vim.notify("avante: M.bufpath received invalid buffer: " .. tostring(buf), vim.log.levels.WARN)
+    return nil
+  end
+
+  local buf_name_str
+  local success, result = pcall(vim.api.nvim_buf_get_name, buf)
+
+  if not success then
+    -- TODO: Consider logging the actual error from pcall.
+    vim.notify(
+      "avante: nvim_buf_get_name failed for buffer " .. tostring(buf) .. ": " .. tostring(result),
+      vim.log.levels.WARN
+    )
+    return nil
+  end
+  buf_name_str = result
+
+  -- M.realpath will handle buf_name_str == "" (empty string for unnamed buffer) correctly, returning nil.
+  return M.realpath(buf_name_str)
+end
 
 function M.cwd() return M.realpath(vim.uv.cwd()) or "" end
 
@@ -111,6 +136,10 @@ M.cache = {}
 ---@param opts? {normalize?:boolean, buf?:number}
 ---@return string
 function M.get(opts)
+  local cwd = vim.uv.cwd()
+  if Config.behaviour.use_cwd_as_project_root then
+    if cwd and cwd ~= "" then return cwd end
+  end
   opts = opts or {}
   local buf = opts.buf or vim.api.nvim_get_current_buf()
   local ret = M.cache[buf]
@@ -119,6 +148,7 @@ function M.get(opts)
     ret = roots[1] and roots[1].paths[1] or vim.uv.cwd()
     M.cache[buf] = ret
   end
+  if cwd ~= nil and #ret > #cwd then ret = cwd end
   if opts and opts.normalize then return ret end
   return Utils.is_win() and ret:gsub("/", "\\") or ret
 end

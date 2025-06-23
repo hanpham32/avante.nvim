@@ -6,6 +6,7 @@ local Selection = require("avante.selection")
 local Suggestion = require("avante.suggestion")
 local Config = require("avante.config")
 local Diff = require("avante.diff")
+local RagService = require("avante.rag_service")
 
 ---@class Avante
 local M = {
@@ -23,12 +24,13 @@ M.did_setup = false
 
 local H = {}
 
-H.load_path = function()
+function H.load_path()
   local ok, LazyConfig = pcall(require, "lazy.core.config")
 
   if ok then
+    Utils.debug("LazyConfig loaded")
     local name = "avante.nvim"
-    local load_path = function() require("avante_lib").load() end
+    local function load_path() require("avante_lib").load() end
 
     if LazyConfig.plugins[name] and LazyConfig.plugins[name]._.loaded then
       vim.schedule(load_path)
@@ -48,11 +50,19 @@ H.load_path = function()
       pattern = "VeryLazy",
       callback = load_path,
     })
+  else
+    require("avante_lib").load()
   end
 end
 
-H.keymaps = function()
+function H.keymaps()
   vim.keymap.set({ "n", "v" }, "<Plug>(AvanteAsk)", function() require("avante.api").ask() end, { noremap = true })
+  vim.keymap.set(
+    { "n", "v" },
+    "<Plug>(AvanteAskNew)",
+    function() require("avante.api").ask({ new_chat = true }) end,
+    { noremap = true }
+  )
   vim.keymap.set(
     { "n", "v" },
     "<Plug>(AvanteChat)",
@@ -75,6 +85,7 @@ H.keymaps = function()
   vim.keymap.set({ "n", "v" }, "<Plug>(AvanteConflictCursor)", function() Diff.choose("cursor") end)
   vim.keymap.set("n", "<Plug>(AvanteConflictNextConflict)", function() Diff.find_next("ours") end)
   vim.keymap.set("n", "<Plug>(AvanteConflictPrevConflict)", function() Diff.find_prev("ours") end)
+  vim.keymap.set("n", "<Plug>(AvanteSelectModel)", function() require("avante.api").select_model() end)
 
   if Config.behaviour.auto_set_keymaps then
     Utils.safe_keymap_set(
@@ -84,10 +95,22 @@ H.keymaps = function()
       { desc = "avante: ask" }
     )
     Utils.safe_keymap_set(
+      { "n", "v" },
+      Config.mappings.new_ask,
+      function() require("avante.api").ask({ new_chat = true }) end,
+      { desc = "avante: create new ask" }
+    )
+    Utils.safe_keymap_set(
       "v",
       Config.mappings.edit,
       function() require("avante.api").edit() end,
       { desc = "avante: edit" }
+    )
+    Utils.safe_keymap_set(
+      "n",
+      Config.mappings.stop,
+      function() require("avante.api").stop() end,
+      { desc = "avante: stop" }
     )
     Utils.safe_keymap_set(
       "n",
@@ -126,6 +149,25 @@ H.keymaps = function()
       noremap = true,
       silent = true,
     })
+    Utils.safe_keymap_set(
+      "n",
+      Config.mappings.select_model,
+      function() require("avante.api").select_model() end,
+      { desc = "avante: select model" }
+    )
+    Utils.safe_keymap_set(
+      "n",
+      Config.mappings.select_history,
+      function() require("avante.api").select_history() end,
+      { desc = "avante: select history" }
+    )
+
+    Utils.safe_keymap_set(
+      "n",
+      Config.mappings.files.add_all_buffers,
+      function() require("avante.api").add_buffer_files() end,
+      { desc = "avante: add all open buffers" }
+    )
   end
 
   if Config.behaviour.auto_suggestions then
@@ -170,17 +212,17 @@ end
 ---@class ApiCaller
 ---@operator call(...): any
 
-H.api = function(fun)
+function H.api(fun)
   return setmetatable({ api = true }, {
     __call = function(...) return fun(...) end,
   }) --[[@as ApiCaller]]
 end
 
-H.signs = function() vim.fn.sign_define("AvanteInputPromptSign", { text = Config.windows.input.prefix }) end
+function H.signs() vim.fn.sign_define("AvanteInputPromptSign", { text = Config.windows.input.prefix }) end
 
 H.augroup = api.nvim_create_augroup("avante_autocmds", { clear = true })
 
-H.autocmds = function()
+function H.autocmds()
   api.nvim_create_autocmd("TabEnter", {
     group = H.augroup,
     pattern = "*",
@@ -202,6 +244,34 @@ H.autocmds = function()
     end,
   })
 
+  api.nvim_create_autocmd("QuitPre", {
+    group = H.augroup,
+    callback = function()
+      local current_buf = vim.api.nvim_get_current_buf()
+      if Utils.is_sidebar_buffer(current_buf) then return end
+
+      local non_sidebar_wins = 0
+      local sidebar_wins = {}
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(win) then
+          local win_buf = vim.api.nvim_win_get_buf(win)
+          if Utils.is_sidebar_buffer(win_buf) then
+            table.insert(sidebar_wins, win)
+          else
+            non_sidebar_wins = non_sidebar_wins + 1
+          end
+        end
+      end
+
+      if non_sidebar_wins <= 1 then
+        for _, win in ipairs(sidebar_wins) do
+          pcall(vim.api.nvim_win_close, win, false)
+        end
+      end
+    end,
+    nested = true,
+  })
+
   api.nvim_create_autocmd("TabClosed", {
     group = H.augroup,
     pattern = "*",
@@ -220,14 +290,23 @@ H.autocmds = function()
     if Config.hints.enabled then M.current.selection:setup_autocmds() end
   end)
 
+  local function setup_colors()
+    Utils.debug("Setting up avante colors")
+    require("avante.highlights").setup()
+  end
+
   api.nvim_create_autocmd("ColorSchemePre", {
     group = H.augroup,
-    callback = function() require("avante.highlights").setup() end,
+    callback = function()
+      vim.schedule(function() setup_colors() end)
+    end,
   })
 
   api.nvim_create_autocmd("ColorScheme", {
     group = H.augroup,
-    callback = function() require("avante.highlights").setup() end,
+    callback = function()
+      vim.schedule(function() setup_colors() end)
+    end,
   })
 
   -- automatically setup Avante filetype to markdown
@@ -283,13 +362,14 @@ end
 M.toggle = { api = true }
 
 ---@param opts? AskOptions
-M.toggle_sidebar = function(opts)
+function M.toggle_sidebar(opts)
   opts = opts or {}
   if opts.ask == nil then opts.ask = true end
 
   local sidebar = M.get()
   if not sidebar then
     M._init(api.nvim_get_current_tabpage())
+    ---@cast opts SidebarOpenOptions
     M.current.sidebar:open(opts)
     return true
   end
@@ -297,22 +377,23 @@ M.toggle_sidebar = function(opts)
   return sidebar:toggle(opts)
 end
 
-M.is_sidebar_open = function()
+function M.is_sidebar_open()
   local sidebar = M.get()
   if not sidebar then return false end
   return sidebar:is_open()
 end
 
 ---@param opts? AskOptions
-M.open_sidebar = function(opts)
+function M.open_sidebar(opts)
   opts = opts or {}
   if opts.ask == nil then opts.ask = true end
   local sidebar = M.get()
   if not sidebar then M._init(api.nvim_get_current_tabpage()) end
+  ---@cast opts SidebarOpenOptions
   M.current.sidebar:open(opts)
 end
 
-M.close_sidebar = function()
+function M.close_sidebar()
   local sidebar = M.get()
   if not sidebar then return end
   sidebar:close()
@@ -360,6 +441,7 @@ function M.setup(opts)
 
   H.load_path()
 
+  require("avante.html2md").setup()
   require("avante.repo_map").setup()
   require("avante.path").setup()
   require("avante.highlights").setup()
@@ -373,6 +455,63 @@ function M.setup(opts)
   H.signs()
 
   M.did_setup = true
+
+  local function run_rag_service()
+    local started_at = os.time()
+    local add_resource_with_delay
+    local function add_resource()
+      local is_ready = RagService.is_ready()
+      if not is_ready then
+        local elapsed = os.time() - started_at
+        if elapsed > 1000 * 60 * 15 then
+          Utils.warn("Rag Service is not ready, giving up")
+          return
+        end
+        add_resource_with_delay()
+        return
+      end
+      vim.defer_fn(function()
+        Utils.info("Adding project root to Rag Service ...")
+        local uri = "file://" .. Utils.get_project_root()
+        if uri:sub(-1) ~= "/" then uri = uri .. "/" end
+        RagService.add_resource(uri)
+      end, 5000)
+    end
+    add_resource_with_delay = function()
+      vim.defer_fn(function() add_resource() end, 5000)
+    end
+    vim.schedule(function()
+      Utils.info("Starting Rag Service ...")
+      RagService.launch_rag_service(add_resource_with_delay)
+    end)
+  end
+
+  if Config.rag_service.enabled then run_rag_service() end
+
+  local has_cmp, cmp = pcall(require, "cmp")
+  if has_cmp then
+    cmp.register_source("avante_commands", require("cmp_avante.commands"):new())
+
+    cmp.register_source("avante_mentions", require("cmp_avante.mentions"):new(Utils.get_chat_mentions))
+
+    cmp.register_source("avante_prompt_mentions", require("cmp_avante.mentions"):new(Utils.get_mentions))
+
+    cmp.setup.filetype({ "AvanteInput" }, {
+      enabled = true,
+      sources = {
+        { name = "avante_commands" },
+        { name = "avante_mentions" },
+        { name = "avante_files" },
+      },
+    })
+
+    cmp.setup.filetype({ "AvantePromptInput" }, {
+      enabled = true,
+      sources = {
+        { name = "avante_prompt_mentions" },
+      },
+    })
+  end
 end
 
 return M

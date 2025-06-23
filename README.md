@@ -1,3 +1,18 @@
+<div align="center" markdown="1">
+   <sup>Special thanks to:</sup>
+   <br>
+   <br>
+   <a href="https://www.warp.dev/avantenvim">
+      <img alt="Warp sponsorship" width="400" src="https://github.com/user-attachments/assets/0fb088f2-f684-4d17-86d2-07a489229083">
+   </a>
+
+### [Warp, the intelligent terminal for developers](https://www.warp.dev/avantenvim)
+
+[Available for MacOS, Linux, & Windows](https://www.warp.dev/avantenvim)<br>
+
+</div>
+<hr>
+
 <div align="center">
   <img alt="logo" width="120" src="https://github.com/user-attachments/assets/2e2f2a58-2b28-4d11-afd1-87b65612b2de" />
   <h1>avante.nvim</h1>
@@ -13,7 +28,10 @@
   <a href="https://github.com/yetone/avante.nvim/actions/workflows/rust.yaml" target="_blank">
     <img src="https://img.shields.io/github/actions/workflow/status/yetone/avante.nvim/rust.yaml?style=flat-square&logo=rust&logoColor=ffffff&label=Rust+CI&labelColor=BC826A&color=347D39&event=push" alt="Rust CI status" />
   </a>
-  <a href="https://discord.com/invite/wUuZz7VxXD" target="_blank">
+  <a href="https://github.com/yetone/avante.nvim/actions/workflows/pre-commit.yaml" target="_blank">
+    <img src="https://img.shields.io/github/actions/workflow/status/yetone/avante.nvim/pre-commit.yaml?style=flat-square&logo=pre-commit&logoColor=ffffff&label=pre-commit&labelColor=FAAF3F&color=347D39&event=push" alt="pre-commit status" />
+  </a>
+  <a href="https://discord.gg/QfnEFEdSjz" target="_blank">
     <img src="https://img.shields.io/discord/1302530866362323016?style=flat-square&logo=discord&label=Discord&logoColor=ffffff&labelColor=7376CF&color=268165" alt="Discord" />
   </a>
   <a href="https://dotfyle.com/plugins/yetone/avante.nvim">
@@ -23,13 +41,21 @@
 
 **avante.nvim** is a Neovim plugin designed to emulate the behaviour of the [Cursor](https://www.cursor.com) AI IDE. It provides users with AI-driven code suggestions and the ability to apply these recommendations directly to their source files with minimal effort.
 
+[查看中文版](README_zh.md)
+
 > [!NOTE]
 >
 > 🥰 This project is undergoing rapid iterations, and many exciting features will be added successively. Stay tuned!
 
-https://github.com/user-attachments/assets/510e6270-b6cf-459d-9a2f-15b397d1fe53
+<https://github.com/user-attachments/assets/510e6270-b6cf-459d-9a2f-15b397d1fe53>
 
-https://github.com/user-attachments/assets/86140bfd-08b4-483d-a887-1b701d9e37dd
+<https://github.com/user-attachments/assets/86140bfd-08b4-483d-a887-1b701d9e37dd>
+
+## Sponsorship ❤️
+
+If you like this project, please consider supporting me on Patreon, as it helps me to continue maintaining and improving it:
+
+[Sponsor me](https://patreon.com/yetone)
 
 ## Features
 
@@ -47,21 +73,47 @@ For building binary if you wish to build from source, then `cargo` is required. 
 ```lua
 {
   "yetone/avante.nvim",
+  -- if you want to build from source then do `make BUILD_FROM_SOURCE=true`
+  -- ⚠️ must add this setting! ! !
+  build = function()
+    -- conditionally use the correct build system for the current OS
+    if vim.fn.has("win32") == 1 then
+      return "powershell -ExecutionPolicy Bypass -File Build.ps1 -BuildFromSource false"
+    else
+      return "make"
+    end
+  end,
   event = "VeryLazy",
-  lazy = false,
-  version = false, -- set this to "*" if you want to always pull the latest change, false to update on release
+  version = false, -- Never set this value to "*"! Never!
+  ---@module 'avante'
+  ---@type avante.Config
   opts = {
     -- add any opts here
+    -- for example
+    provider = "claude",
+    providers = {
+      claude = {
+        endpoint = "https://api.anthropic.com",
+        model = "claude-sonnet-4-20250514",
+        timeout = 30000, -- Timeout in milliseconds
+          extra_request_body = {
+            temperature = 0.75,
+            max_tokens = 20480,
+          },
+      },
+    },
   },
-  -- if you want to build from source then do `make BUILD_FROM_SOURCE=true`
-  build = "make",
-  -- build = "powershell -ExecutionPolicy Bypass -File Build.ps1 -BuildFromSource false" -- for windows
   dependencies = {
-    "stevearc/dressing.nvim",
+    "nvim-treesitter/nvim-treesitter",
     "nvim-lua/plenary.nvim",
     "MunifTanjim/nui.nvim",
     --- The below dependencies are optional,
+    "echasnovski/mini.pick", -- for file_selector provider mini.pick
+    "nvim-telescope/telescope.nvim", -- for file_selector provider telescope
     "hrsh7th/nvim-cmp", -- autocompletion for avante commands and mentions
+    "ibhagwan/fzf-lua", -- for file_selector provider fzf
+    "stevearc/dressing.nvim", -- for input provider dressing
+    "folke/snacks.nvim", -- for input provider snacks
     "nvim-tree/nvim-web-devicons", -- or echasnovski/mini.icons
     "zbirenbaum/copilot.lua", -- for providers='copilot'
     {
@@ -102,20 +154,22 @@ For building binary if you wish to build from source, then `cargo` is required. 
 ```vim
 
 " Deps
-Plug 'stevearc/dressing.nvim'
+Plug 'nvim-treesitter/nvim-treesitter'
 Plug 'nvim-lua/plenary.nvim'
 Plug 'MunifTanjim/nui.nvim'
+Plug 'MeanderingProgrammer/render-markdown.nvim'
 
 " Optional deps
 Plug 'hrsh7th/nvim-cmp'
 Plug 'nvim-tree/nvim-web-devicons' "or Plug 'echasnovski/mini.icons'
 Plug 'HakonHarnes/img-clip.nvim'
 Plug 'zbirenbaum/copilot.lua'
+Plug 'stevearc/dressing.nvim' " for enhanced input UI
+Plug 'folke/snacks.nvim' " for modern input UI
 
 " Yay, pass source=true if you want to build from source
 Plug 'yetone/avante.nvim', { 'branch': 'main', 'do': 'make' }
 autocmd! User avante.nvim lua << EOF
-require('avante_lib').load()
 require('avante').setup()
 EOF
 ```
@@ -133,7 +187,7 @@ add({
   source = 'yetone/avante.nvim',
   monitor = 'main',
   depends = {
-    'stevearc/dressing.nvim',
+    'nvim-treesitter/nvim-treesitter',
     'nvim-lua/plenary.nvim',
     'MunifTanjim/nui.nvim',
     'echasnovski/mini.icons'
@@ -146,13 +200,79 @@ add({ source = 'zbirenbaum/copilot.lua' })
 add({ source = 'HakonHarnes/img-clip.nvim' })
 add({ source = 'MeanderingProgrammer/render-markdown.nvim' })
 
-now(function() require('avante_lib').load() end)
 later(function() require('render-markdown').setup({...}) end)
 later(function()
   require('img-clip').setup({...}) -- config img-clip
   require("copilot").setup({...}) -- setup copilot to your liking
   require("avante").setup({...}) -- config for avante.nvim
 end)
+```
+
+</details>
+
+<details>
+
+  <summary><a href="https://github.com/wbthomason/packer.nvim">Packer</a></summary>
+
+```vim
+
+  -- Required plugins
+  use 'nvim-treesitter/nvim-treesitter'
+  use 'nvim-lua/plenary.nvim'
+  use 'MunifTanjim/nui.nvim'
+  use 'MeanderingProgrammer/render-markdown.nvim'
+
+  -- Optional dependencies
+  use 'hrsh7th/nvim-cmp'
+  use 'nvim-tree/nvim-web-devicons' -- or use 'echasnovski/mini.icons'
+  use 'HakonHarnes/img-clip.nvim'
+  use 'zbirenbaum/copilot.lua'
+  use 'stevearc/dressing.nvim' -- for enhanced input UI
+  use 'folke/snacks.nvim' -- for modern input UI
+
+  -- Avante.nvim with build process
+  use {
+    'yetone/avante.nvim',
+    branch = 'main',
+    run = 'make',
+    config = function()
+      require('avante').setup()
+    end
+  }
+```
+
+</details>
+
+<details>
+
+  <summary><a href="https://github.com/nix-community/home-manager">Home Manager</a></summary>
+
+```nix
+programs.neovim = {
+  plugins = [
+    {
+      plugin = pkgs.vimPlugins.avante-nvim;
+      type = "lua";
+      config = ''
+              require("avante_lib").load()
+              require("avante").setup()
+      '' # or builtins.readFile ./plugins/avante.lua;
+    }
+  ];
+};
+```
+
+</details>
+
+<details>
+
+  <summary><a href="https://nix-community.github.io/nixvim/plugins/avante/index.html">Nixvim</a></summary>
+
+```nix
+  plugins.avante.enable = true;
+  plugins.avante.settings = {
+    # setup options here
+  };
 ```
 
 </details>
@@ -175,19 +295,30 @@ require('copilot').setup ({
 require('render-markdown').setup ({
   -- use recommended settings from above
 })
-require('avante_lib').load()
-require('avante').setup ({
-  -- Your config here!
+require('avante').setup({
+  -- Example: Using snacks.nvim as input provider
+  input = {
+    provider = "snacks", -- "native" | "dressing" | "snacks"
+    provider_opts = {
+      -- Snacks input configuration
+      title = "Avante Input",
+      icon = " ",
+      placeholder = "Enter your API key...",
+    },
+  },
+  -- Your other config here!
 })
 ```
-
-**NOTE**: For <code>avante.tokenizers</code> and templates to work, make sure to call <code>require('avante_lib').load()</code> somewhere when entering the editor. We will leave the users to decide where it fits to do this, as this varies among configurations. (But we do recommend running this after where you set your colorscheme)
 
 </details>
 
 > [!IMPORTANT]
 >
 > `avante.nvim` is currently only compatible with Neovim 0.10.1 or later. Please ensure that your Neovim version meets these requirements before proceeding.
+
+> [!NOTE]
+>
+> When loading the plugin synchronously, we recommend `require`ing it sometime after your colorscheme.
 
 > [!NOTE]
 >
@@ -200,22 +331,36 @@ require('avante').setup ({
 
 > [!TIP]
 >
-> Any rendering plugins that support markdown should work with Avante as long as you add the supported filetype `Avante`. See https://github.com/yetone/avante.nvim/issues/175 and [this comment](https://github.com/yetone/avante.nvim/issues/175#issuecomment-2313749363) for more information.
+> Any rendering plugins that support markdown should work with Avante as long as you add the supported filetype `Avante`. See <https://github.com/yetone/avante.nvim/issues/175> and [this comment](https://github.com/yetone/avante.nvim/issues/175#issuecomment-2313749363) for more information.
 
 ### Default setup configuration
 
 _See [config.lua#L9](./lua/avante/config.lua) for the full config_
 
+<details>
+<summary>Default configuration</summary>
+
 ```lua
 {
   ---@alias Provider "claude" | "openai" | "azure" | "gemini" | "cohere" | "copilot" | string
-  provider = "claude", -- Recommend using Claude
-  auto_suggestions_provider = "claude", -- Since auto-suggestions are a high-frequency operation and therefore expensive, it is recommended to specify an inexpensive provider or even a free provider: copilot
-  claude = {
-    endpoint = "https://api.anthropic.com",
-    model = "claude-3-5-sonnet-20241022",
-    temperature = 0,
-    max_tokens = 4096,
+  ---@type Provider
+  provider = "claude", -- The provider used in Aider mode or in the planning phase of Cursor Planning Mode
+  ---@alias Mode "agentic" | "legacy"
+  ---@type Mode
+  mode = "agentic", -- The default mode for interaction. "agentic" uses tools to automatically generate code, "legacy" uses the old planning method to generate code.
+  -- WARNING: Since auto-suggestions are a high-frequency operation and therefore expensive,
+  -- currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
+  -- Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
+  auto_suggestions_provider = "claude",
+  providers = {
+    claude = {
+      endpoint = "https://api.anthropic.com",
+      model = "claude-3-5-sonnet-20241022",
+      extra_request_body = {
+        temperature = 0.75,
+        max_tokens = 4096,
+      },
+    },
   },
   ---Specify the special dual_boost mode
   ---1. enabled: Whether to enable dual_boost mode. Default to false.
@@ -240,6 +385,24 @@ _See [config.lua#L9](./lua/avante/config.lua) for the full config_
     auto_apply_diff_after_generation = false,
     support_paste_from_clipboard = false,
     minimize_diff = true, -- Whether to remove unchanged lines when applying a code block
+    enable_token_counting = true, -- Whether to enable token counting. Default to true.
+    auto_approve_tool_permissions = false, -- Default: show permission prompts for all tools
+    -- Examples:
+    -- auto_approve_tool_permissions = true,                -- Auto-approve all tools (no prompts)
+    -- auto_approve_tool_permissions = {"bash", "replace_in_file"}, -- Auto-approve specific tools only
+  },
+  prompt_logger = { -- logs prompts to disk (timestamped, for replay/debugging)
+    enabled = true, -- toggle logging entirely
+    log_dir = vim.fn.stdpath("cache") .. "/avante_prompts", -- directory where logs are saved
+    fortune_cookie_on_success = false, -- shows a random fortune after each logged prompt (requires `fortune` installed)
+    next_prompt = {
+      normal = "<C-n>", -- load the next (newer) prompt log in normal mode
+      insert = "<C-n>",
+    },
+    prev_prompt = {
+      normal = "<C-p>", -- load the previous (older) prompt log in normal mode
+      insert = "<C-p>",
+    },
   },
   mappings = {
     --- @class AvanteConflictMappings
@@ -266,11 +429,21 @@ _See [config.lua#L9](./lua/avante/config.lua) for the full config_
       normal = "<CR>",
       insert = "<C-s>",
     },
+    cancel = {
+      normal = { "<C-c>", "<Esc>", "q" },
+      insert = { "<C-c>" },
+    },
     sidebar = {
       apply_all = "A",
       apply_cursor = "a",
+      retry_user_request = "r",
+      edit_user_request = "e",
       switch_windows = "<Tab>",
       reverse_switch_windows = "<S-Tab>",
+      remove_file = "d",
+      add_file = "@",
+      close = { "<Esc>", "q" },
+      close_from_input = nil, -- e.g., { normal = "<Esc>", insert = "<C-d>" }
     },
   },
   hints = { enabled = true },
@@ -317,24 +490,143 @@ _See [config.lua#L9](./lua/avante/config.lua) for the full config_
     --- Disable by setting to -1.
     override_timeoutlen = 500,
   },
+  suggestion = {
+    debounce = 600,
+    throttle = 600,
+  },
 }
 ```
+
+</details>
+
 ## Blink.cmp users
+
 For blink cmp users (nvim-cmp alternative) view below instruction for configuration
-This is achieved but emulating nvim-cmp using blink.compat
+This is achieved by emulating nvim-cmp using blink.compat
+or you can use [Kaiser-Yang/blink-cmp-avante](https://github.com/Kaiser-Yang/blink-cmp-avante).
+
 <details>
   <summary>Lua</summary>
 
 ```lua
-      file_selector = {
-        --- @alias FileSelectorProvider "native" | "fzf" | "telescope" | string
+      selector = {
+        --- @alias avante.SelectorProvider "native" | "fzf_lua" | "mini_pick" | "snacks" | "telescope" | fun(selector: avante.ui.Selector): nil
+        --- @type avante.SelectorProvider
         provider = "fzf",
         -- Options override for custom providers
         provider_opts = {},
       }
 ```
+
+To create a customized selector provider, you can specify a customized function to launch a picker to select items and pass the selected items to the `on_select` callback.
+
+```lua
+      selector = {
+        ---@param selector avante.ui.Selector
+        provider = function(selector)
+          local items = selector.items ---@type avante.ui.SelectorItem[]
+          local title = selector.title ---@type string
+          local on_select = selector.on_select ---@type fun(selected_item_ids: string[]|nil): nil
+
+          --- your customized picker logic here
+        end,
+      }
+```
+
+### Input Provider Configuration
+
+Avante.nvim supports multiple input providers for user input (like API key entry). You can configure which provider to use:
+
+<details>
+  <summary>Native Input Provider (Default)</summary>
+
+```lua
+{
+  input = {
+    provider = "native", -- Uses vim.ui.input
+    provider_opts = {},
+  }
+}
+```
+
+</details>
+
+<details>
+  <summary>Dressing.nvim Input Provider</summary>
+
+For enhanced input UI with better styling and features:
+
+```lua
+{
+  input = {
+    provider = "dressing",
+    provider_opts = {},
+  }
+}
+```
+
+You'll need to install dressing.nvim:
+
+```lua
+-- With lazy.nvim
+{ "stevearc/dressing.nvim" }
+```
+
+</details>
+
+<details>
+  <summary>Snacks.nvim Input Provider (Recommended)</summary>
+
+For modern, feature-rich input UI:
+
+```lua
+{
+  input = {
+    provider = "snacks",
+    provider_opts = {
+      -- Additional snacks.input options
+      title = "Avante Input",
+      icon = " ",
+    },
+  }
+}
+```
+
+You'll need to install snacks.nvim:
+
+```lua
+-- With lazy.nvim
+{ "folke/snacks.nvim" }
+```
+
+</details>
+
+<details>
+  <summary>Custom Input Provider</summary>
+
+To create a customized input provider, you can specify a function:
+
+```lua
+{
+  input = {
+    ---@param input avante.ui.Input
+    provider = function(input)
+      local title = input.title ---@type string
+      local default = input.default ---@type string
+      local conceal = input.conceal ---@type boolean
+      local on_submit = input.on_submit ---@type fun(result: string|nil): nil
+
+      --- your customized input logic here
+    end,
+  }
+}
+```
+
+</details>
+
 Choose a selector other that native, the default as that currently has an issue
 For lazyvim users copy the full config for blink.cmp from the website or extend the options
+
 ```lua
       compat = {
         "avante_commands",
@@ -342,7 +634,9 @@ For lazyvim users copy the full config for blink.cmp from the website or extend 
         "avante_files",
       }
 ```
+
 For other users just add a custom provider
+
 ```lua
       default = {
         ...
@@ -351,6 +645,7 @@ For other users just add a custom provider
         "avante_files",
       }
 ```
+
 ```lua
       providers = {
         avante_commands = {
@@ -360,7 +655,7 @@ For other users just add a custom provider
           opts = {},
         },
         avante_files = {
-          name = "avante_commands",
+          name = "avante_files",
           module = "blink.compat.source",
           score_offset = 100, -- show at a higher priority than lsp
           opts = {},
@@ -374,9 +669,30 @@ For other users just add a custom provider
         ...
     }
 ```
+
 </details>
 
 ## Usage
+
+### @mentions
+
+avante.nvim supports the following @mentions to help you reference different parts of your codebase:
+
+| Mention        | Description                         |
+| -------------- | ----------------------------------- |
+| `@codebase`    | Include the entire codebase context |
+| `@diagnostics` | Include current diagnostic issues   |
+| `@file`        | Include the current file            |
+| `@quickfix`    | Include the quickfix list           |
+| `@buffers`     | Include all open buffers            |
+
+You can use these mentions in your conversations with avante.nvim to provide relevant context. For example:
+
+- `@file what are the issues in this code?` - analyzes the current file
+- `@codebase explain the project structure` - looks at the entire codebase
+- `@diagnostics how do I fix these errors?` - helps resolve diagnostic issues
+
+### Basic Functionality
 
 Given its early stage, `avante.nvim` currently supports the following basic functionalities:
 
@@ -387,15 +703,34 @@ Given its early stage, `avante.nvim` currently supports the following basic func
 
 > [!IMPORTANT]
 >
-> Due to the poor performance of other models, avante.nvim only recommends using the claude-3.5-sonnet model.
-> All features can only be guaranteed to work properly on the claude-3.5-sonnet model.
-> We do not accept changes to the code or prompts to accommodate other models. Otherwise, it will greatly increase our maintenance costs.
-> We hope everyone can understand. Thank you!
+> ~~Due to the poor performance of other models, avante.nvim only recommends using the claude-3.5-sonnet model.~~ > ~~All features can only be guaranteed to work properly on the claude-3.5-sonnet model.~~ > ~~We do not accept changes to the code or prompts to accommodate other models. Otherwise, it will greatly increase our maintenance costs.~~ > ~~We hope everyone can understand. Thank you!~~
+
+> [!IMPORTANT]
+>
+> Since avante.nvim now supports [cursor planning mode](./cursor-planning-mode.md), the above statement is no longer valid! avante.nvim now supports most models! If you encounter issues with normal usage, please try enabling [cursor planning mode](./cursor-planning-mode.md).
 
 > [!IMPORTANT]
 >
 > For most consistency between neovim session, it is recommended to set the environment variables in your shell file.
 > By default, `Avante` will prompt you at startup to input the API key for the provider you have selected.
+>
+> **Scoped API Keys (Recommended for Isolation)**
+>
+> Avante now supports scoped API keys, allowing you to isolate API keys specifically for Avante without affecting other applications. Simply prefix any API key with `AVANTE_`:
+>
+> ```sh
+> # Scoped keys (recommended)
+> export AVANTE_ANTHROPIC_API_KEY=your-claude-api-key
+> export AVANTE_OPENAI_API_KEY=your-openai-api-key
+> export AVANTE_AZURE_OPENAI_API_KEY=your-azure-api-key
+> export AVANTE_GEMINI_API_KEY=your-gemini-api-key
+> export AVANTE_CO_API_KEY=your-cohere-api-key
+> export AVANTE_AIHUBMIX_API_KEY=your-aihubmix-api-key
+> ```
+>
+> **Global API Keys (Legacy)**
+>
+> You can still use the traditional global API keys if you prefer:
 >
 > For Claude:
 >
@@ -414,6 +749,30 @@ Given its early stage, `avante.nvim` currently supports the following basic func
 > ```sh
 > export AZURE_OPENAI_API_KEY=your-api-key
 > ```
+>
+> For Amazon Bedrock:
+>
+> You can specify the `BEDROCK_KEYS` environment variable to set credentials. When this variable is not specified, bedrock will use the default AWS credentials chain (see below).
+>
+> ```sh
+> export BEDROCK_KEYS=aws_access_key_id,aws_secret_access_key,aws_region[,aws_session_token]
+> ```
+>
+> Note: The aws_session_token is optional and only needed when using temporary AWS credentials
+>
+> Alternatively Bedrock tries to resolve AWS credentials using the [Default Credentials Provider Chain](https://docs.aws.amazon.com/cli/v1/userguide/cli-chap-authentication.html).
+> This means you can have credentials e.g. configured via the AWS CLI, stored in your ~/.aws/profile, use AWS SSO etc.
+> In this case `aws_region` and optionally `aws_profile` should be specified via the bedrock config, e.g.:
+>
+> ```lua
+> bedrock = {
+>   model = "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+>   aws_profile = "bedrock",
+>   aws_region = "us-east-1",
+> },
+> ```
+>
+> Note: Bedrock requires the [AWS CLI](https://aws.amazon.com/cli/) to be installed on your system.
 
 1. Open a code file in Neovim.
 2. Use the `:AvanteAsk` command to query the AI about the code.
@@ -429,9 +788,14 @@ The following key bindings are available for use with `avante.nvim`:
 | Key Binding                               | Description                                  |
 | ----------------------------------------- | -------------------------------------------- |
 | <kbd>Leader</kbd><kbd>a</kbd><kbd>a</kbd> | show sidebar                                 |
+| <kbd>Leader</kbd><kbd>a</kbd><kbd>t</kbd> | toggle sidebar visibility                    |
 | <kbd>Leader</kbd><kbd>a</kbd><kbd>r</kbd> | refresh sidebar                              |
 | <kbd>Leader</kbd><kbd>a</kbd><kbd>f</kbd> | switch sidebar focus                         |
+| <kbd>Leader</kbd><kbd>a</kbd><kbd>?</kbd> | select model                                 |
 | <kbd>Leader</kbd><kbd>a</kbd><kbd>e</kbd> | edit selected blocks                         |
+| <kbd>Leader</kbd><kbd>a</kbd><kbd>S</kbd> | stop current AI request                      |
+| <kbd>Leader</kbd><kbd>a</kbd><kbd>h</kbd> | select between chat histories                |
+| <kbd>Leader</kbd><kbd>a</kbd><kbd>B</kbd> | add all buffer (files) as Selected Files     |
 | <kbd>c</kbd><kbd>o</kbd>                  | choose ours                                  |
 | <kbd>c</kbd><kbd>t</kbd>                  | choose theirs                                |
 | <kbd>c</kbd><kbd>a</kbd>                  | choose all theirs                            |
@@ -448,19 +812,76 @@ The following key bindings are available for use with `avante.nvim`:
 > If you are using `lazy.nvim`, then all keymap here will be safely set, meaning if `<leader>aa` is already binded, then avante.nvim won't bind this mapping.
 > In this case, user will be responsible for setting up their own. See [notes on keymaps](https://github.com/yetone/avante.nvim/wiki#keymaps-and-api-i-guess) for more details.
 
+### Neotree shortcut
+
+In the neotree sidebar, you can also add a new keyboard shortcut to quickly add `file/folder` to `Avante Selected Files`.
+
+<details>
+<summary>Neotree configuration</summary>
+
+```lua
+return {
+  {
+    'nvim-neo-tree/neo-tree.nvim',
+    config = function()
+      require('neo-tree').setup({
+        filesystem = {
+          commands = {
+            avante_add_files = function(state)
+              local node = state.tree:get_node()
+              local filepath = node:get_id()
+              local relative_path = require('avante.utils').relative_path(filepath)
+
+              local sidebar = require('avante').get()
+
+              local open = sidebar:is_open()
+              -- ensure avante sidebar is open
+              if not open then
+                require('avante.api').ask()
+                sidebar = require('avante').get()
+              end
+
+              sidebar.file_selector:add_selected_file(relative_path)
+
+              -- remove neo tree buffer
+              if not open then
+                sidebar.file_selector:remove_selected_file('neo-tree filesystem [1]')
+              end
+            end,
+          },
+          window = {
+            mappings = {
+              ['oa'] = 'avante_add_files',
+            },
+          },
+        },
+      })
+    end,
+  },
+}
+```
+
+</details>
+
 ## Commands
 
-| Command | Description | Examples
-|---------|-------------| ------------------
-| `:AvanteAsk [question] [position]` | Ask AI about your code. Optional `position` set window position and `ask` enable/disable direct asking mode | `:AvanteAsk position=right Refactor this code here`
-| `:AvanteBuild` | Build dependencies for the project |
-| `:AvanteChat` | Start a chat session with AI about your codebase. Default is `ask`=false |
-| `:AvanteEdit` | Edit the selected code blocks |
-| `:AvanteFocus` | Switch focus to/from the sidebar |
-| `:AvanteRefresh` | Refresh all Avante windows |
-| `:AvanteSwitchProvider` | Switch AI provider (e.g. openai) |
-| `:AvanteShowRepoMap` | Show repo map for project's structure |
-| `:AvanteToggle` | Toggle the Avante sidebar |
+| Command                            | Description                                                                                                 | Examples                                            |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `:AvanteAsk [question] [position]` | Ask AI about your code. Optional `position` set window position and `ask` enable/disable direct asking mode | `:AvanteAsk position=right Refactor this code here` |
+| `:AvanteBuild`                     | Build dependencies for the project                                                                          |                                                     |
+| `:AvanteChat`                      | Start a chat session with AI about your codebase. Default is `ask`=false                                    |                                                     |
+| `:AvanteChatNew`                   | Start a new chat session. The current chat can be re-opened with the chat session selector                  |                                                     |
+| `:AvanteHistory`                   | Opens a picker for your previous chat sessions                                                              |                                                     |
+| `:AvanteClear`                     | Clear the chat history for your current chat session                                                        |                                                     |
+| `:AvanteEdit`                      | Edit the selected code blocks                                                                               |                                                     |
+| `:AvanteFocus`                     | Switch focus to/from the sidebar                                                                            |                                                     |
+| `:AvanteRefresh`                   | Refresh all Avante windows                                                                                  |                                                     |
+| `:AvanteStop`                      | Stop the current AI request                                                                                 |                                                     |
+| `:AvanteSwitchProvider`            | Switch AI provider (e.g. openai)                                                                            |                                                     |
+| `:AvanteShowRepoMap`               | Show repo map for project's structure                                                                       |                                                     |
+| `:AvanteToggle`                    | Toggle the Avante sidebar                                                                                   |                                                     |
+| `:AvanteModels`                    | Show model list                                                                                             |                                                     |
+| `:AvanteSwitchSelectorProvider`    | Switch avante selector provider (e.g. native, telescope, fzf_lua, mini_pick, snacks)                        |                                                     |
 
 ## Highlight Groups
 
@@ -478,8 +899,217 @@ The following key bindings are available for use with `avante.nvim`:
 | AvanteConflictIncomingLabel | Incoming conflict label highlight             | Default to shade of `AvanteConflictIncoming` |
 | AvantePopupHint             | Usage hints in popup menus                    |                                              |
 | AvanteInlineHint            | The end-of-line hint displayed in visual mode |                                              |
+| AvantePromptInput           | The body highlight of the prompt input        |                                              |
+| AvantePromptInputBorder     | The border highlight of the prompt input      | Default to `NormalFloat`                     |
 
 See [highlights.lua](./lua/avante/highlights.lua) for more information
+
+## Ollama
+
+ollama is a first-class provider for avante.nvim. You can use it by setting `provider = "ollama"` in the configuration, and set the `model` field in `ollama` to the model you want to use. For example:
+
+```lua
+provider = "ollama",
+providers = {
+  ollama = {
+    endpoint = "http://localhost:11434",
+    model = "qwq:32b",
+  },
+}
+```
+
+## AiHubMix
+
+[AiHubMix](https://s.kiiro.ai/r/PPELHy) is a built-in provider for avante.nvim. You can register an account on the [AiHubMix official website](https://s.kiiro.ai/r/PPELHy), then create an API Key within the website, and set this API Key in your environment variables:
+
+```bash
+export AIHUBMIX_API_KEY=your_api_key
+```
+
+Then in your configuration, set `provider = "aihubmix"`, and set the `model` field to the model name you want to use, for example:
+
+```lua
+provider = "aihubmix",
+providers = {
+  aihubmix = {
+    model = "gpt-4o-2024-11-20",
+  },
+}
+```
+
+## Custom providers
+
+Avante provides a set of default providers, but users can also create their own providers.
+
+For more information, see [Custom Providers](https://github.com/yetone/avante.nvim/wiki/Custom-providers)
+
+## RAG Service
+
+Avante provides a RAG service, which is a tool for obtaining the required context for the AI to generate the codes. By default, it is not enabled. You can enable it this way:
+
+```lua
+  rag_service = { -- RAG Service configuration
+    enabled = false, -- Enables the RAG service
+    host_mount = os.getenv("HOME"), -- Host mount path for the rag service (Docker will mount this path)
+    runner = "docker", -- Runner for the RAG service (can use docker or nix)
+    llm = { -- Language Model (LLM) configuration for RAG service
+      provider = "openai", -- LLM provider
+      endpoint = "https://api.openai.com/v1", -- LLM API endpoint
+      api_key = "OPENAI_API_KEY", -- Environment variable name for the LLM API key
+      model = "gpt-4o-mini", -- LLM model name
+      extra = nil, -- Additional configuration options for LLM
+    },
+    embed = { -- Embedding model configuration for RAG service
+      provider = "openai", -- Embedding provider
+      endpoint = "https://api.openai.com/v1", -- Embedding API endpoint
+      api_key = "OPENAI_API_KEY", -- Environment variable name for the embedding API key
+      model = "text-embedding-3-large", -- Embedding model name
+      extra = nil, -- Additional configuration options for the embedding model
+    },
+    docker_extra_args = "", -- Extra arguments to pass to the docker command
+  },
+```
+
+The RAG Service can currently configure the LLM and embedding models separately. In the `llm` and `embed` configuration blocks, you can set the following fields:
+
+- `provider`: Model provider (e.g., "openai", "ollama", "dashscope", and "openrouter")
+- `endpoint`: API endpoint
+- `api_key`: Environment variable name for the API key
+- `model`: Model name
+- `extra`: Additional configuration options
+
+For detailed configuration of different model providers, you can check [here](./py/rag-service/README.md).
+
+Additionally, RAG Service also depends on Docker! (For macOS users, OrbStack is recommended as a Docker alternative).
+
+`host_mount` is the path that will be mounted to the container, and the default is the home directory. The mount is required
+for the RAG service to access the files in the host machine. It is up to the user to decide if you want to mount the whole
+`/` directory, just the project directory, or the home directory. If you plan using avante and RAG event for projects
+stored outside your home directory, you will need to set the `host_mount` to the root directory of your file system.
+
+The mount will be read only.
+
+After changing the rag_service configuration, you need to manually delete the rag_service container to ensure the new configuration is used: `docker rm -fv avante-rag-service`
+
+## Web Search Engines
+
+Avante's tools include some web search engines, currently support:
+
+- [Tavily](https://tavily.com/)
+- [SerpApi](https://serpapi.com/)
+- [SearchAPI](https://www.searchapi.io/)
+- Google's [Programmable Search Engine](https://developers.google.com/custom-search/v1/overview)
+- [Kagi](https://help.kagi.com/kagi/api/search.html)
+- [Brave Search](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
+- [SearXNG](https://searxng.github.io/searxng/)
+
+The default is Tavily, and can be changed through configuring `Config.web_search_engine.provider`:
+
+```lua
+web_search_engine = {
+  provider = "tavily", -- tavily, serpapi, searchapi, google, kagi, brave, or searxng
+  proxy = nil, -- proxy support, e.g., http://127.0.0.1:7890
+}
+```
+
+Environment variables required for providers:
+
+- Tavily: `TAVILY_API_KEY`
+- SerpApi: `SERPAPI_API_KEY`
+- SearchAPI: `SEARCHAPI_API_KEY`
+- Google:
+  - `GOOGLE_SEARCH_API_KEY` as the [API key](https://developers.google.com/custom-search/v1/overview)
+  - `GOOGLE_SEARCH_ENGINE_ID` as the [search engine](https://programmablesearchengine.google.com) ID
+- Kagi: `KAGI_API_KEY` as the [API Token](https://kagi.com/settings?p=api)
+- Brave Search: `BRAVE_API_KEY` as the [API key](https://api-dashboard.search.brave.com/app/keys)
+- SearXNG: `SEARXNG_API_URL` as the [API URL](https://docs.searxng.org/dev/search_api.html)
+
+## Disable Tools
+
+Avante enables tools by default, but some LLM models do not support tools. You can disable tools by setting `disable_tools = true` for the provider. For example:
+
+```lua
+providers = {
+  claude = {
+    endpoint = "https://api.anthropic.com",
+    model = "claude-sonnet-4-20250514",
+    timeout = 30000, -- Timeout in milliseconds
+    disable_tools = true, -- disable tools!
+    extra_request_body = {
+      temperature = 0,
+      max_tokens = 4096,
+    }
+  }
+}
+```
+
+In case you want to ban some tools to avoid its usage (like Claude 3.7 overusing the python tool) you can disable just specific tools
+
+```lua
+{
+  disabled_tools = { "python" },
+}
+```
+
+Tool list
+
+> rag_search, python, git_diff, git_commit, glob, search_keyword, read_file_toplevel_symbols,
+> read_file, create_file, move_path, copy_path, delete_path, create_dir, bash, web_search, fetch
+
+## Custom Tools
+
+Avante allows you to define custom tools that can be used by the AI during code generation and analysis. These tools can execute shell commands, run scripts, or perform any custom logic you need.
+
+### Example: Go Test Runner
+
+<details>
+<summary>Here's an example of a custom tool that runs Go unit tests:</summary>
+
+```lua
+{
+  custom_tools = {
+    {
+      name = "run_go_tests",  -- Unique name for the tool
+      description = "Run Go unit tests and return results",  -- Description shown to AI
+      command = "go test -v ./...",  -- Shell command to execute
+      param = {  -- Input parameters (optional)
+        type = "table",
+        fields = {
+          {
+            name = "target",
+            description = "Package or directory to test (e.g. './pkg/...' or './internal/pkg')",
+            type = "string",
+            optional = true,
+          },
+        },
+      },
+      returns = {  -- Expected return values
+        {
+          name = "result",
+          description = "Result of the fetch",
+          type = "string",
+        },
+        {
+          name = "error",
+          description = "Error message if the fetch was not successful",
+          type = "string",
+          optional = true,
+        },
+      },
+      func = function(params, on_log, on_complete)  -- Custom function to execute
+        local target = params.target or "./..."
+        return vim.fn.system(string.format("go test -v %s", target))
+      end,
+    },
+  },
+}
+```
+
+</details>
+
+## MCP
+
+Now you can integrate MCP functionality for Avante through `mcphub.nvim`. For detailed documentation, please refer to [mcphub.nvim](https://ravitemer.github.io/mcphub.nvim/extensions/avante.html)
 
 ## Custom prompts
 
@@ -488,6 +1118,7 @@ By default, `avante.nvim` provides three different modes to interact with: `plan
 - `planning`: Used with `require("avante").toggle()` on sidebar
 - `editing`: Used with `require("avante").edit()` on selection codeblock
 - `suggesting`: Used with `require("avante").get_suggestion():suggest()` on Tab flow.
+- `cursor-planning`: Used with `require("avante").toggle()` on Tab flow, but only when cursor planning mode is enabled.
 
 Users can customize the system prompts via `Config.system_prompt`. We recommend calling this in a custom Autocmds depending on your need:
 
@@ -521,19 +1152,57 @@ If you have the following structure:
 ├── .git/
 ├── typescript.planning.avanterules
 ├── snippets.editing.avanterules
+├── suggesting.avanterules
 └── src/
 
 ```
 
 - `typescript.planning.avanterules` will be used for `planning` mode
-- `snippets.editing.avanterules`` will be used for `editing` mode
-- the default `suggesting` prompt from `avante.nvim` will be used for `suggesting` mode.
+- `snippets.editing.avanterules` will be used for `editing` mode
+- `suggesting.avanterules` will be used for `suggesting` mode.
 
 </details>
 
 > [!important]
 >
 > `*.avanterules` is a jinja template file, in which will be rendered using [minijinja](https://github.com/mitsuhiko/minijinja). See [templates](https://github.com/yetone/avante.nvim/blob/main/lua/avante/templates) for example on how to extend current templates.
+
+## Integration
+
+Avante.nvim can be extended to work with other plugins by using its extension modules. Below is an example of integrating Avante with [`nvim-tree`](https://github.com/nvim-tree/nvim-tree.lua), allowing you to select or deselect files directly from the NvimTree UI:
+
+```lua
+{
+    "yetone/avante.nvim",
+    event = "VeryLazy",
+    keys = {
+        {
+            "<leader>a+",
+            function()
+                local tree_ext = require("avante.extensions.nvim_tree")
+                tree_ext.add_file()
+            end,
+            desc = "Select file in NvimTree",
+            ft = "NvimTree",
+        },
+        {
+            "<leader>a-",
+            function()
+                local tree_ext = require("avante.extensions.nvim_tree")
+                tree_ext.remove_file()
+            end,
+            desc = "Deselect file in NvimTree",
+            ft = "NvimTree",
+        },
+    },
+    opts = {
+        --- other configurations
+        selector = {
+            exclude_auto_select = { "NvimTree" },
+        },
+    },
+}
+```
 
 ## TODOs
 
@@ -545,7 +1214,9 @@ If you have the following structure:
 - [x] Smart Tab (Cursor Flow)
 - [x] Chat with project (You can use `@codebase` to chat with the whole project)
 - [x] Chat with selected files
-- [ ] CoT
+- [x] Tool use
+- [x] MCP
+- [ ] Better codebase indexing
 
 ## Roadmap
 
@@ -573,6 +1244,29 @@ We would like to express our heartfelt gratitude to the contributors of the foll
 | [aider](https://github.com/paul-gauthier/aider)                       | Apache 2.0 License | Planning mode user prompt     | [lua/avante/templates/planning.avanterules](https://github.com/yetone/avante.nvim/blob/main/lua/avante/templates/planning.avanterules) |
 
 The high quality and ingenuity of these projects' source code have been immensely beneficial throughout our development process. We extend our sincere thanks and respect to the authors and contributors of these projects. It is the selfless dedication of the open-source community that drives projects like avante.nvim forward.
+
+## Business Sponsors
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://s.kiiro.ai/r/ylVbT6" target="_blank">
+        <img height="80" src="https://github.com/user-attachments/assets/1abd8ede-bd98-4e6e-8ee0-5a661b40344a" alt="Meshy AI" /><br/>
+        <strong>Meshy AI</strong>
+        <div>&nbsp;</div>
+        <div>The #1 AI 3D Model Generator for Creators</div>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://s.kiiro.ai/r/mGPJOd" target="_blank">
+        <img height="80" src="https://github.com/user-attachments/assets/7b7bd75e-1fd2-48cc-a71a-cff206e4fbd7" alt="BabelTower API" /><br/>
+        <strong>BabelTower API</strong>
+        <div>&nbsp;</div>
+        <div>No account needed, use any model instantly</div>
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## License
 

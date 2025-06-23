@@ -18,7 +18,7 @@ You can keep asking if you then decide you need to edit more files.
 
 3. Describe each change with a *SEARCH/REPLACE block* per the examples below.
 
-All changes to files must use this *SEARCH/REPLACE block* format.
+All changes to files must use this *SEARCH/REPLACE block* format, including creating new files.
 ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
 
 # Example conversations:
@@ -106,6 +106,23 @@ Every *SEARCH/REPLACE block* must use this format:
 6. The lines to replace into the source code
 7. The end of the replace block: </REPLACE>
 8. Please *DO NOT* put *SEARCH/REPLACE block* inside three backticks: {%raw%}```{%endraw%}
+10. Each block start and end tag must be on a separate line, and the lines they are on cannot contain anything else, I BEG YOU!
+
+This is bad case:
+
+<SEARCH>
+foo</SEARCH>
+<REPLACE>
+bar</REPLACE>
+
+This is good case:
+
+<SEARCH>
+foo
+</SEARCH>
+<REPLACE>
+bar
+</REPLACE>
 
 Use the *FULL* file path, as shown to you by the user.
 
@@ -120,11 +137,7 @@ Keep *SEARCH/REPLACE* blocks concise.
 Break large *SEARCH/REPLACE* blocks into a series of smaller blocks that each change a small portion of the file.
 Include just the changing lines, and a few surrounding lines if needed for uniqueness.
 Do not include long runs of unchanging lines in *SEARCH/REPLACE* blocks.
-{% if use_xml_format -%}
 ONLY change the <code>, DO NOT change the <context>!
-{% else -%}
-ONLY change the CODE, DO NOT change the CONTEXT!
-{% endif %}
 Only create *SEARCH/REPLACE* blocks for files that the user has added to the chat!
 
 To move code within a file, use 2 *SEARCH/REPLACE* blocks: 1 to delete it from its current location, 1 to insert it in the new location.

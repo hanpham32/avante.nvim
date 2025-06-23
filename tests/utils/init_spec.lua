@@ -65,16 +65,16 @@ describe("Utils", function()
     end)
   end)
 
-  describe("remove_indentation", function()
+  describe("trime_space", function()
     it("should remove indentation correctly", function()
-      assert.equals("test", Utils.remove_indentation("  test"))
-      assert.equals("test", Utils.remove_indentation("\ttest"))
-      assert.equals("test", Utils.remove_indentation("test"))
+      assert.equals("test", Utils.trim_space("  test"))
+      assert.equals("test", Utils.trim_space("\ttest"))
+      assert.equals("test", Utils.trim_space("test"))
     end)
 
     it("should handle empty or nil input", function()
-      assert.equals("", Utils.remove_indentation(""))
-      assert.equals(nil, Utils.remove_indentation(nil))
+      assert.equals("", Utils.trim_space(""))
+      assert.equals(nil, Utils.trim_space(nil))
     end)
   end)
 
@@ -118,6 +118,38 @@ describe("Utils", function()
       local mentions = Utils.get_mentions()
       assert.equals("codebase", mentions[1].command)
       assert.equals("diagnostics", mentions[2].command)
+    end)
+  end)
+
+  describe("trim_think_content", function()
+    it("should remove think content", function()
+      local input = "<think>this should be removed</think> Hello World"
+      assert.equals(" Hello World", Utils.trim_think_content(input))
+    end)
+
+    it("The think tag that is not in the prefix should not be deleted.", function()
+      local input = "Hello <think>this should not be removed</think> World"
+      assert.equals("Hello <think>this should not be removed</think> World", Utils.trim_think_content(input))
+    end)
+
+    it("should handle multiple think blocks", function()
+      local input = "<think>first</think>middle<think>second</think>"
+      assert.equals("middle<think>second</think>", Utils.trim_think_content(input))
+    end)
+
+    it("should handle empty think blocks", function()
+      local input = "<think></think>testtest"
+      assert.equals("testtest", Utils.trim_think_content(input))
+    end)
+
+    it("should handle empty think blocks", function()
+      local input = "test<think></think>test"
+      assert.equals("test<think></think>test", Utils.trim_think_content(input))
+    end)
+
+    it("should handle input without think blocks", function()
+      local input = "just normal text"
+      assert.equals("just normal text", Utils.trim_think_content(input))
     end)
   end)
 
@@ -174,6 +206,29 @@ describe("Utils", function()
       vim.wait(200, function() return false end)
 
       assert.equals(5, result)
+    end)
+  end)
+
+  describe("fuzzy_match", function()
+    it("should match exact lines", function()
+      local lines = { "test", "test2", "test3", "test4" }
+      local start_line, end_line = Utils.fuzzy_match(lines, { "test2", "test3" })
+      assert.equals(2, start_line)
+      assert.equals(3, end_line)
+    end)
+
+    it("should match lines with suffix", function()
+      local lines = { "test", "test2", "test3", "test4" }
+      local start_line, end_line = Utils.fuzzy_match(lines, { "test2 \t", "test3" })
+      assert.equals(2, start_line)
+      assert.equals(3, end_line)
+    end)
+
+    it("should match lines with space", function()
+      local lines = { "test", "test2", "test3", "test4" }
+      local start_line, end_line = Utils.fuzzy_match(lines, { "test2 ", "  test3" })
+      assert.equals(2, start_line)
+      assert.equals(3, end_line)
     end)
   end)
 end)

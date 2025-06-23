@@ -1,7 +1,6 @@
 local Popup = require("nui.popup")
 local Utils = require("avante.utils")
 local event = require("nui.utils.autocmd").event
-local Config = require("avante.config")
 
 local filetype_map = {
   ["javascriptreact"] = "javascript",
@@ -13,7 +12,6 @@ local filetype_map = {
 ---@field stringify_definitions fun(lang: string, source: string): string
 local repo_map_lib = nil
 
----@class avante.utils.repo_map
 local RepoMap = {}
 
 ---@return AvanteRepoMap|nil
@@ -30,29 +28,16 @@ end
 function RepoMap.setup() vim.defer_fn(RepoMap._init_repo_map_lib, 1000) end
 
 function RepoMap.get_ts_lang(filepath)
-  local filetype = RepoMap.get_filetype(filepath)
+  local filetype = Utils.get_filetype(filepath)
   return filetype_map[filetype] or filetype
-end
-
-function RepoMap.get_filetype(filepath)
-  -- Some files are sometimes not detected correctly when buffer is not included
-  -- https://github.com/neovim/neovim/issues/27265
-
-  local buf = vim.api.nvim_create_buf(false, true)
-  local filetype = vim.filetype.match({ filename = filepath, buf = buf })
-  vim.api.nvim_buf_delete(buf, { force = true })
-
-  return filetype
 end
 
 function RepoMap._build_repo_map(project_root, file_ext)
   local output = {}
-  local gitignore_path = project_root .. "/.gitignore"
-  local gitignore_patterns, gitignore_negate_patterns = Utils.parse_gitignore(gitignore_path)
-  local ignore_patterns = vim.list_extend(gitignore_patterns, Config.repo_map.ignore_patterns)
-  local negate_patterns = vim.list_extend(gitignore_negate_patterns, Config.repo_map.negate_patterns)
 
-  local filepaths = Utils.scan_directory(project_root, ignore_patterns, negate_patterns)
+  local filepaths = Utils.scan_directory({
+    directory = project_root,
+  })
   if filepaths and not RepoMap._init_repo_map_lib() then
     -- or just throw an error if we don't want to execute request without codebase
     Utils.error("Failed to load avante_repo_map")
@@ -61,13 +46,13 @@ function RepoMap._build_repo_map(project_root, file_ext)
   vim.iter(filepaths):each(function(filepath)
     if not Utils.is_same_file_ext(file_ext, filepath) then return end
     local filetype = RepoMap.get_ts_lang(filepath)
-    local definitions = filetype
-        and repo_map_lib.stringify_definitions(filetype, Utils.file.read_content(filepath) or "")
-      or ""
+    local lines = Utils.read_file_from_buf_or_disk(filepath)
+    local content = lines and table.concat(lines, "\n") or ""
+    local definitions = filetype and repo_map_lib.stringify_definitions(filetype, content) or ""
     if definitions == "" then return end
     table.insert(output, {
       path = Utils.relative_path(filepath),
-      lang = RepoMap.get_filetype(filepath),
+      lang = Utils.get_filetype(filepath),
       defs = definitions,
     })
   end)
@@ -77,6 +62,12 @@ end
 local cache = {}
 
 function RepoMap.get_repo_map(file_ext)
+  -- Add safety check for file_ext
+  if not file_ext then
+    Utils.warn("No file extension available - please open a file first")
+    return {}
+  end
+
   local repo_map = RepoMap._get_repo_map(file_ext) or {}
   if not repo_map or next(repo_map) == nil then
     Utils.warn("The repo map is empty. Maybe do not support this language: " .. file_ext)
@@ -85,7 +76,15 @@ function RepoMap.get_repo_map(file_ext)
 end
 
 function RepoMap._get_repo_map(file_ext)
-  file_ext = file_ext or vim.fn.expand("%:e")
+  -- Add safety check at the start of the function
+  if not file_ext then
+    local current_buf = vim.api.nvim_get_current_buf()
+    local buf_name = vim.api.nvim_buf_get_name(current_buf)
+    if buf_name and buf_name ~= "" then file_ext = vim.fn.fnamemodify(buf_name, ":e") end
+
+    if not file_ext or file_ext == "" then return {} end
+  end
+
   local project_root = Utils.root.get()
   local cache_key = project_root .. "." .. file_ext
   local cached = cache[cache_key]
@@ -124,10 +123,9 @@ function RepoMap._get_repo_map(file_ext)
   local update_repo_map = vim.schedule_wrap(function(rel_filepath)
     if rel_filepath and Utils.is_same_file_ext(file_ext, rel_filepath) then
       local abs_filepath = PPath:new(project_root):joinpath(rel_filepath):absolute()
-      local definitions = repo_map_lib.stringify_definitions(
-        RepoMap.get_ts_lang(abs_filepath),
-        Utils.file.read_content(abs_filepath) or ""
-      )
+      local lines = Utils.read_file_from_buf_or_disk(abs_filepath)
+      local content = lines and table.concat(lines, "\n") or ""
+      local definitions = repo_map_lib.stringify_definitions(RepoMap.get_ts_lang(abs_filepath), content)
       if definitions == "" then return end
       local found = false
       for _, m in ipairs(repo_map) do
@@ -140,7 +138,7 @@ function RepoMap._get_repo_map(file_ext)
       if not found then
         table.insert(repo_map, {
           path = Utils.relative_path(abs_filepath),
-          lang = RepoMap.get_filetype(abs_filepath),
+          lang = Utils.get_filetype(abs_filepath),
           defs = definitions,
         })
       end

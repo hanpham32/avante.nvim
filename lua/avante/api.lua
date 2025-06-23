@@ -1,6 +1,6 @@
 local Config = require("avante.config")
 local Utils = require("avante.utils")
-local PromptInput = require("avante.prompt_input")
+local PromptInput = require("avante.ui.prompt_input")
 
 ---@class avante.ApiToggle
 ---@operator call(): boolean
@@ -11,17 +11,26 @@ local PromptInput = require("avante.prompt_input")
 ---@field toggle avante.ApiToggle
 local M = {}
 
----@param target_provider FileSelectorProvider
-M.switch_file_selector_provider = function(target_provider)
+---@param target_provider avante.SelectorProvider
+function M.switch_selector_provider(target_provider)
   require("avante.config").override({
-    file_selector = {
+    selector = {
       provider = target_provider,
     },
   })
 end
 
----@param target Provider
-M.switch_provider = function(target) require("avante.providers").refresh(target) end
+---@param target_provider avante.InputProvider
+function M.switch_input_provider(target_provider)
+  require("avante.config").override({
+    input = {
+      provider = target_provider,
+    },
+  })
+end
+
+---@param target avante.ProviderName
+function M.switch_provider(target) require("avante.providers").refresh(target) end
 
 ---@param path string
 local function to_windows_path(path)
@@ -35,7 +44,7 @@ local function to_windows_path(path)
 end
 
 ---@param opts? {source: boolean}
-M.build = function(opts)
+function M.build(opts)
   opts = opts or { source = true }
   local dirname = Utils.trim(string.sub(debug.getinfo(1).source, 2, #"/init.lua" * -1), { suffix = "/" })
   local git_root = vim.fs.find(".git", { path = dirname, upward = true })[1]
@@ -99,9 +108,11 @@ end
 ---@field win? table<string, any> windows options similar to |nvim_open_win()|
 ---@field ask? boolean
 ---@field floating? boolean whether to open a floating input to enter the question
+---@field new_chat? boolean whether to open a new chat
+---@field without_selection? boolean whether to open a new chat without selection
 
 ---@param opts? AskOptions
-M.ask = function(opts)
+function M.ask(opts)
   opts = opts or {}
   if type(opts) == "string" then
     Utils.warn("passing 'ask' as string is deprecated, do {question = '...'} instead", { once = true })
@@ -109,14 +120,16 @@ M.ask = function(opts)
   end
 
   local has_question = opts.question ~= nil and opts.question ~= ""
+  local new_chat = opts.new_chat == true
 
-  if Utils.is_sidebar_buffer(0) and not has_question then
+  if Utils.is_sidebar_buffer(0) and not has_question and not new_chat then
     require("avante").close_sidebar()
     return false
   end
 
   opts = vim.tbl_extend("force", { selection = Utils.get_visual_selection_and_range() }, opts)
 
+  ---@param input string | nil
   local function ask(input)
     if input == nil or input == "" then input = opts.question end
     local sidebar = require("avante").get()
@@ -124,6 +137,12 @@ M.ask = function(opts)
       sidebar:close({ goto_code_win = false })
     end
     require("avante").open_sidebar(opts)
+    if new_chat then sidebar:new_chat() end
+    if opts.without_selection then
+      sidebar.code.selection = nil
+      sidebar.file_selector:reset()
+      if sidebar.selected_files_container then sidebar.selected_files_container:unmount() end
+    end
     if input == nil or input == "" then return true end
     vim.api.nvim_exec_autocmds("User", { pattern = "AvanteInputSubmitted", data = { request = input } })
     return true
@@ -135,9 +154,10 @@ M.ask = function(opts)
       close_on_submit = true,
       win_opts = {
         border = Config.windows.ask.border,
-        title = { { "ask", "FloatTitle" } },
+        title = { { "Avante Ask", "FloatTitle" } },
       },
       start_insert = Config.windows.ask.start_insert,
+      default_value = opts.question,
     })
     prompt_input:open()
     return true
@@ -146,24 +166,26 @@ M.ask = function(opts)
   return ask()
 end
 
----@param question? string
-M.edit = function(question)
+---@param request? string
+---@param line1? integer
+---@param line2? integer
+function M.edit(request, line1, line2)
   local _, selection = require("avante").get()
   if not selection then return end
-  selection:create_editing_input()
-  if question ~= nil or question ~= "" then
-    vim.api.nvim_exec_autocmds("User", { pattern = "AvanteEditSubmitted", data = { request = question } })
+  selection:create_editing_input(request, line1, line2)
+  if request ~= nil and request ~= "" then
+    vim.api.nvim_exec_autocmds("User", { pattern = "AvanteEditSubmitted", data = { request = request } })
   end
 end
 
 ---@return avante.Suggestion | nil
-M.get_suggestion = function()
+function M.get_suggestion()
   local _, _, suggestion = require("avante").get()
   return suggestion
 end
 
 ---@param opts? AskOptions
-M.refresh = function(opts)
+function M.refresh(opts)
   opts = opts or {}
   local sidebar = require("avante").get()
   if not sidebar then return end
@@ -185,7 +207,7 @@ M.refresh = function(opts)
 end
 
 ---@param opts? AskOptions
-M.focus = function(opts)
+function M.focus(opts)
   opts = opts or {}
   local sidebar = require("avante").get()
   if not sidebar then return end
@@ -205,10 +227,75 @@ M.focus = function(opts)
     end
   else
     if sidebar.code.winid then vim.api.nvim_set_current_win(sidebar.code.winid) end
+    ---@cast opts SidebarOpenOptions
     sidebar:open(opts)
     if sidebar.input_container.winid then vim.api.nvim_set_current_win(sidebar.input_container.winid) end
   end
 end
+
+function M.select_model() require("avante.model_selector").open() end
+
+function M.select_history()
+  local buf = vim.api.nvim_get_current_buf()
+  require("avante.history_selector").open(buf, function(filename)
+    vim.api.nvim_buf_call(buf, function()
+      if not require("avante").is_sidebar_open() then require("avante").open_sidebar({}) end
+      local Path = require("avante.path")
+      Path.history.save_latest_filename(buf, filename)
+      local sidebar = require("avante").get()
+      sidebar:update_content_with_history()
+      sidebar:create_todos_container()
+      vim.schedule(function() sidebar:focus_input() end)
+    end)
+  end)
+end
+
+function M.add_buffer_files()
+  local sidebar = require("avante").get()
+  if not sidebar then
+    require("avante.api").ask()
+    sidebar = require("avante").get()
+  end
+  if not sidebar:is_open() then sidebar:open({}) end
+  sidebar.file_selector:add_buffer_files()
+end
+
+function M.add_selected_file(filepath)
+  local rel_path = Utils.uniform_path(filepath)
+
+  local sidebar = require("avante").get()
+  if not sidebar then
+    require("avante.api").ask()
+    sidebar = require("avante").get()
+  end
+  if not sidebar:is_open() then sidebar:open({}) end
+  sidebar.file_selector:add_selected_file(rel_path)
+end
+
+function M.remove_selected_file(filepath)
+  ---@diagnostic disable-next-line: undefined-field
+  local stat = vim.loop.fs_stat(filepath)
+  local files
+  if stat and stat.type == "directory" then
+    files = Utils.scan_directory({ directory = filepath, add_dirs = true })
+  else
+    files = { filepath }
+  end
+
+  local sidebar = require("avante").get()
+  if not sidebar then
+    require("avante.api").ask()
+    sidebar = require("avante").get()
+  end
+  if not sidebar:is_open() then sidebar:open({}) end
+
+  for _, file in ipairs(files) do
+    local rel_path = Utils.uniform_path(file)
+    sidebar.file_selector:remove_selected_file(rel_path)
+  end
+end
+
+function M.stop() require("avante.llm").cancel_inflight_request() end
 
 return setmetatable(M, {
   __index = function(t, k)

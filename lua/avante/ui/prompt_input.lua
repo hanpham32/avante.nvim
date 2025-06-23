@@ -3,7 +3,7 @@ local fn = vim.fn
 local Config = require("avante.config")
 local Utils = require("avante.utils")
 
----@class PromptInput
+---@class avante.ui.PromptInput
 ---@field bufnr integer | nil
 ---@field winid integer | nil
 ---@field win_opts table
@@ -17,17 +17,20 @@ local Utils = require("avante.utils")
 ---@field spinner_index integer
 ---@field spinner_timer uv_timer_t | nil
 ---@field spinner_active boolean
+---@field default_value string | nil
+---@field popup_hint_id integer | nil
 local PromptInput = {}
 PromptInput.__index = PromptInput
 
----@class PromptInputOptions
+---@class avante.ui.PromptInputOptions
 ---@field start_insert? boolean
 ---@field submit_callback? fun(input: string):nil
 ---@field cancel_callback? fun():nil
 ---@field close_on_submit? boolean
 ---@field win_opts? table
+---@field default_value? string
 
----@param opts? PromptInputOptions
+---@param opts? avante.ui.PromptInputOptions
 function PromptInput:new(opts)
   opts = opts or {}
   local obj = setmetatable({}, PromptInput)
@@ -40,6 +43,7 @@ function PromptInput:new(opts)
   obj.cancel_callback = opts.cancel_callback
   obj.close_on_submit = opts.close_on_submit or false
   obj.win_opts = opts.win_opts
+  obj.default_value = opts.default_value
   obj.spinner_chars = {
     "⡀",
     "⠄",
@@ -84,6 +88,7 @@ function PromptInput:new(opts)
   obj.spinner_index = 1
   obj.spinner_timer = nil
   obj.spinner_active = false
+  obj.popup_hint_id = vim.api.nvim_create_namespace("avante_prompt_input_hint")
   return obj
 end
 
@@ -92,7 +97,7 @@ function PromptInput:open()
 
   local bufnr = api.nvim_create_buf(false, true)
   self.bufnr = bufnr
-  vim.bo[bufnr].filetype = "AvanteInput"
+  vim.bo[bufnr].filetype = "AvantePromptInput"
   Utils.mark_as_sidebar_buffer(bufnr)
 
   local win_opts = vim.tbl_extend("force", {
@@ -111,22 +116,35 @@ function PromptInput:open()
   self.winid = winid
 
   api.nvim_set_option_value("wrap", false, { win = winid })
+  api.nvim_set_option_value("winblend", 5, { win = winid })
+  api.nvim_set_option_value(
+    "winhighlight",
+    "FloatBorder:AvantePromptInputBorder,Normal:AvantePromptInput",
+    { win = winid }
+  )
   api.nvim_set_option_value("cursorline", true, { win = winid })
   api.nvim_set_option_value("modifiable", true, { buf = bufnr })
+
+  local default_value_lines = {}
+  if self.default_value then default_value_lines = vim.split(self.default_value, "\n") end
+  if #default_value_lines > 0 then
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, default_value_lines)
+    api.nvim_win_set_cursor(winid, { #default_value_lines, #default_value_lines[#default_value_lines] })
+  end
 
   self:show_shortcuts_hints()
 
   self:setup_keymaps()
   self:setup_autocmds()
 
-  if self.start_insert then vim.cmd([[startinsert]]) end
+  if self.start_insert then vim.cmd("noautocmd startinsert!") end
 end
 
 function PromptInput:close()
   if not self.bufnr then return end
   self:stop_spinner()
   self:close_shortcuts_hints()
-  if api.nvim_get_mode().mode == "i" then vim.cmd([[stopinsert]]) end
+  if api.nvim_get_mode().mode == "i" then vim.cmd("noautocmd stopinsert") end
   if self.winid and api.nvim_win_is_valid(self.winid) then
     api.nvim_win_close(self.winid, true)
     self.winid = nil
@@ -172,7 +190,12 @@ function PromptInput:show_shortcuts_hints()
 
   local buf = api.nvim_create_buf(false, true)
   api.nvim_buf_set_lines(buf, 0, -1, false, { display_text })
-  vim.api.nvim_buf_add_highlight(buf, 0, "AvantePopupHint", 0, 0, -1)
+  api.nvim_buf_set_extmark(buf, self.popup_hint_id, 0, 0, {
+    end_row = 0,
+    end_col = #display_text,
+    hl_group = "AvantePopupHint",
+    priority = 100,
+  })
 
   local width = fn.strdisplaywidth(display_text)
 
@@ -181,7 +204,7 @@ function PromptInput:show_shortcuts_hints()
     win = self.winid,
     width = width,
     height = 1,
-    row = math.min(buf_height, win_height),
+    row = win_height,
     col = math.max(win_width - width, 0),
     style = "minimal",
     border = "none",
@@ -190,11 +213,15 @@ function PromptInput:show_shortcuts_hints()
   }
 
   self.shortcuts_hints_winid = api.nvim_open_win(buf, false, opts)
+  api.nvim_set_option_value("winblend", 10, { win = self.shortcuts_hints_winid })
 end
 
 function PromptInput:close_shortcuts_hints()
   if self.shortcuts_hints_winid and api.nvim_win_is_valid(self.shortcuts_hints_winid) then
+    local buf = api.nvim_win_get_buf(self.shortcuts_hints_winid)
+    if self.popup_hint_id then api.nvim_buf_clear_namespace(buf, self.popup_hint_id, 0, -1) end
     api.nvim_win_close(self.shortcuts_hints_winid, true)
+    api.nvim_buf_delete(buf, { force = true })
     self.shortcuts_hints_winid = nil
   end
 end
@@ -256,8 +283,12 @@ function PromptInput:setup_keymaps()
     { buffer = bufnr, noremap = true, silent = true }
   )
 
-  vim.keymap.set("n", "<Esc>", function() self:cancel() end, { buffer = bufnr })
-  vim.keymap.set("n", "q", function() self:cancel() end, { buffer = bufnr })
+  for _, key in ipairs(Config.mappings.cancel.normal) do
+    vim.keymap.set("n", key, function() self:cancel() end, { buffer = bufnr })
+  end
+  for _, key in ipairs(Config.mappings.cancel.insert) do
+    vim.keymap.set("i", key, function() self:cancel() end, { buffer = bufnr })
+  end
 end
 
 function PromptInput:setup_autocmds()
@@ -272,47 +303,25 @@ function PromptInput:setup_autocmds()
 
   api.nvim_create_autocmd("ModeChanged", {
     group = group,
-    pattern = "i:*",
+    pattern = { "i:*", "*:i" },
     callback = function()
       local cur_buf = api.nvim_get_current_buf()
       if cur_buf == bufnr then self:show_shortcuts_hints() end
     end,
   })
 
-  api.nvim_create_autocmd("ModeChanged", {
-    group = group,
-    pattern = "*:i",
-    callback = function()
-      local cur_buf = api.nvim_get_current_buf()
-      if cur_buf == bufnr then self:show_shortcuts_hints() end
-    end,
-  })
-
-  local quit_id, close_unfocus
-  quit_id = api.nvim_create_autocmd("QuitPre", {
+  api.nvim_create_autocmd("QuitPre", {
     group = group,
     buffer = bufnr,
     once = true,
     nested = true,
-    callback = function()
-      self:cancel()
-      if not quit_id then
-        api.nvim_del_autocmd(quit_id)
-        quit_id = nil
-      end
-    end,
+    callback = function() self:cancel() end,
   })
 
-  close_unfocus = api.nvim_create_autocmd("WinLeave", {
+  api.nvim_create_autocmd("WinLeave", {
     group = group,
     buffer = bufnr,
-    callback = function()
-      self:cancel()
-      if close_unfocus then
-        api.nvim_del_autocmd(close_unfocus)
-        close_unfocus = nil
-      end
-    end,
+    callback = function() self:cancel() end,
   })
 end
 

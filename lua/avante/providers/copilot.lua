@@ -27,11 +27,10 @@
 
 local curl = require("plenary.curl")
 
-local Config = require("avante.config")
 local Path = require("plenary.path")
 local Utils = require("avante.utils")
-local P = require("avante.providers")
-local O = require("avante.providers").openai
+local Providers = require("avante.providers")
+local OpenAI = require("avante.providers").openai
 
 local H = {}
 
@@ -98,7 +97,7 @@ end
 ---@field oauth_token string
 ---
 ---@return string
-H.get_oauth_token = function()
+function H.get_oauth_token()
   local xdg_config = vim.fn.expand("$XDG_CONFIG_HOME")
   local os_name = Utils.get_os_name()
   ---@type string
@@ -125,6 +124,7 @@ H.get_oauth_token = function()
   return vim
     .iter(
       ---@type table<string, OAuthToken>
+      ---@diagnostic disable-next-line: param-type-mismatch
       vim.json.decode(yason:read())
     )
     :filter(function(k, _) return k:match("github.com") end)
@@ -137,9 +137,9 @@ H.get_oauth_token = function()
 end
 
 H.chat_auth_url = "https://api.github.com/copilot_internal/v2/token"
-H.chat_completion_url = function(base_url) return Utils.url_join(base_url, "/chat/completions") end
+function H.chat_completion_url(base_url) return Utils.url_join(base_url, "/chat/completions") end
 
-H.refresh_token = function(async, force)
+function H.refresh_token(async, force)
   if not M.state then error("internal initialization error") end
 
   async = async == nil and true or async
@@ -155,17 +155,19 @@ H.refresh_token = function(async, force)
     return false
   end
 
+  local provider_conf = Providers.get_config("copilot")
+
   local curl_opts = {
     headers = {
       ["Authorization"] = "token " .. M.state.oauth_token,
       ["Accept"] = "application/json",
     },
-    timeout = Config.copilot.timeout,
-    proxy = Config.copilot.proxy,
-    insecure = Config.copilot.allow_insecure,
+    timeout = provider_conf.timeout,
+    proxy = provider_conf.proxy,
+    insecure = provider_conf.allow_insecure,
   }
 
-  local handle_response = function(response)
+  local function handle_response(response)
     if response.status == 200 then
       M.state.github_token = vim.json.decode(response.body)
       local file = Path:new(copilot_path)
@@ -208,47 +210,101 @@ M.role_map = {
   assistant = "assistant",
 }
 
-M.parse_messages = function(opts)
-  local messages = {
-    { role = "system", content = opts.system_prompt },
-  }
-  vim
-    .iter(opts.messages)
-    :each(function(msg) table.insert(messages, { role = M.role_map[msg.role], content = msg.content }) end)
-  return messages
-end
+function M:is_disable_stream() return false end
 
-M.parse_response = O.parse_response
+setmetatable(M, { __index = OpenAI })
 
-M.parse_curl_args = function(provider, code_opts)
+function M:models_list()
+  if M._model_list_cache then return M._model_list_cache end
+  if not M._is_setup then M.setup() end
   -- refresh token synchronously, only if it has expired
   -- (this should rarely happen, as we refresh the token in the background)
   H.refresh_token(false, false)
-
-  local base, body_opts = P.parse_config(provider)
-
-  return {
-    url = H.chat_completion_url(base.endpoint),
-    timeout = base.timeout,
-    proxy = base.proxy,
-    insecure = base.allow_insecure,
-    headers = {
+  local provider_conf = Providers.parse_config(self)
+  local curl_opts = {
+    headers = Utils.tbl_override({
       ["Content-Type"] = "application/json",
       ["Authorization"] = "Bearer " .. M.state.github_token.token,
       ["Copilot-Integration-Id"] = "vscode-chat",
       ["Editor-Version"] = ("Neovim/%s.%s.%s"):format(vim.version().major, vim.version().minor, vim.version().patch),
-    },
+    }, self.extra_headers),
+    timeout = provider_conf.timeout,
+    proxy = provider_conf.proxy,
+    insecure = provider_conf.allow_insecure,
+  }
+
+  local function handle_response(response)
+    if response.status == 200 then
+      local body = vim.json.decode(response.body)
+      -- ref: https://github.com/CopilotC-Nvim/CopilotChat.nvim/blob/16d897fd43d07e3b54478ccdb2f8a16e4df4f45a/lua/CopilotChat/config/providers.lua#L171-L187
+      local models = vim
+        .iter(body.data)
+        :filter(function(model) return model.capabilities.type == "chat" and not vim.endswith(model.id, "paygo") end)
+        :map(
+          function(model)
+            return {
+              id = model.id,
+              display_name = model.name,
+              name = "copilot/" .. model.name .. " (" .. model.id .. ")",
+              provider_name = "copilot",
+              tokenizer = model.capabilities.tokenizer,
+              max_input_tokens = model.capabilities.limits.max_prompt_tokens,
+              max_output_tokens = model.capabilities.limits.max_output_tokens,
+              policy = not model["policy"] or model["policy"]["state"] == "enabled",
+              version = model.version,
+            }
+          end
+        )
+        :totable()
+      M._model_list_cache = models
+      return models
+    else
+      error("Failed to get success response: " .. vim.inspect(response))
+      return {}
+    end
+  end
+
+  local response = curl.get((M.state.github_token.endpoints.api or "") .. "/models", curl_opts)
+  return handle_response(response)
+end
+
+function M:parse_curl_args(prompt_opts)
+  -- refresh token synchronously, only if it has expired
+  -- (this should rarely happen, as we refresh the token in the background)
+  H.refresh_token(false, false)
+
+  local provider_conf, request_body = Providers.parse_config(self)
+  local disable_tools = provider_conf.disable_tools or false
+
+  local tools = {}
+  if not disable_tools and prompt_opts.tools then
+    for _, tool in ipairs(prompt_opts.tools) do
+      table.insert(tools, OpenAI:transform_tool(tool))
+    end
+  end
+
+  return {
+    url = H.chat_completion_url(M.state.github_token.endpoints.api or provider_conf.endpoint),
+    timeout = provider_conf.timeout,
+    proxy = provider_conf.proxy,
+    insecure = provider_conf.allow_insecure,
+    headers = Utils.tbl_override({
+      ["Authorization"] = "Bearer " .. M.state.github_token.token,
+      ["Copilot-Integration-Id"] = "vscode-chat",
+      ["Editor-Version"] = ("Neovim/%s.%s.%s"):format(vim.version().major, vim.version().minor, vim.version().patch),
+    }, self.extra_headers),
     body = vim.tbl_deep_extend("force", {
-      model = base.model,
-      messages = M.parse_messages(code_opts),
+      model = provider_conf.model,
+      messages = self:parse_messages(prompt_opts),
       stream = true,
-    }, body_opts),
+      tools = tools,
+    }, request_body),
   }
 end
 
 M._refresh_timer = nil
 
-M.setup_timer = function()
+function M.setup_timer()
   if M._refresh_timer then
     M._refresh_timer:stop()
     M._refresh_timer:close()
@@ -271,7 +327,7 @@ M.setup_timer = function()
   )
 end
 
-M.setup_file_watcher = function()
+function M.setup_file_watcher()
   if M._file_watcher then return end
 
   local copilot_token_file = Path:new(copilot_path)
@@ -282,12 +338,22 @@ M.setup_file_watcher = function()
     {},
     vim.schedule_wrap(function()
       -- Reload token from file
-      if copilot_token_file:exists() then M.state.github_token = vim.json.decode(copilot_token_file:read()) end
+      if copilot_token_file:exists() then
+        local ok, token = pcall(vim.json.decode, copilot_token_file:read())
+        if ok then M.state.github_token = token end
+      end
     end)
   )
 end
 
-M.setup = function()
+M._is_setup = false
+
+function M.is_env_set()
+  local ok = pcall(function() H.get_oauth_token() end)
+  return ok
+end
+
+function M.setup()
   local copilot_token_file = Path:new(copilot_path)
 
   if not M.state then M.state = {
@@ -315,9 +381,10 @@ M.setup = function()
 
   require("avante.tokenizers").setup(M.tokenizer_id)
   vim.g.avante_login = true
+  M._is_setup = true
 end
 
-M.cleanup = function()
+function M.cleanup()
   -- Cleanup refresh timer
   if M._refresh_timer then
     M._refresh_timer:stop()
@@ -342,6 +409,7 @@ M.cleanup = function()
 
   -- Cleanup file watcher
   if M._file_watcher then
+    ---@diagnostic disable-next-line: param-type-mismatch
     M._file_watcher:stop()
     M._file_watcher = nil
   end
